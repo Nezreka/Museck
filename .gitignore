@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+py_modules/
+
+# Build output
+dist/
+out/
+*.zip
+
+# Lock files (optional - remove if you want to track)
+# pnpm-lock.yaml
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Decky development
+*.log
+
+# Environment
+.env
+.env.local
