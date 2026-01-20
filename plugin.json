@@ -1,0 +1,11 @@
+{
+  "name": "Museck",
+  "author": "Your Name",
+  "flags": ["debug"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["utility"],
+    "description": "A Decky Loader plugin for Steam Deck",
+    "image": ""
+  }
+}

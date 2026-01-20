@@ -1,0 +1,71 @@
+export var EClientUsedInputType;
+(function (EClientUsedInputType) {
+    EClientUsedInputType[EClientUsedInputType["Keyboard"] = 0] = "Keyboard";
+    EClientUsedInputType[EClientUsedInputType["Mouse"] = 1] = "Mouse";
+    EClientUsedInputType[EClientUsedInputType["Controller"] = 2] = "Controller";
+    EClientUsedInputType[EClientUsedInputType["Max"] = 3] = "Max";
+})(EClientUsedInputType || (EClientUsedInputType = {}));
+export var ERemoteClientLaunch;
+(function (ERemoteClientLaunch) {
+    ERemoteClientLaunch[ERemoteClientLaunch["OK"] = 1] = "OK";
+    ERemoteClientLaunch[ERemoteClientLaunch["Fail"] = 2] = "Fail";
+    ERemoteClientLaunch[ERemoteClientLaunch["RequiresUI"] = 3] = "RequiresUI";
+    ERemoteClientLaunch[ERemoteClientLaunch["RequiresLaunchOption"] = 4] = "RequiresLaunchOption";
+    ERemoteClientLaunch[ERemoteClientLaunch["RequiresEULA"] = 5] = "RequiresEULA";
+    ERemoteClientLaunch[ERemoteClientLaunch["Timeout"] = 6] = "Timeout";
+    ERemoteClientLaunch[ERemoteClientLaunch["StreamTimeout"] = 7] = "StreamTimeout";
+    ERemoteClientLaunch[ERemoteClientLaunch["StreamClientFail"] = 8] = "StreamClientFail";
+    ERemoteClientLaunch[ERemoteClientLaunch["OtherGameRunning"] = 9] = "OtherGameRunning";
+    ERemoteClientLaunch[ERemoteClientLaunch["DownloadStarted"] = 10] = "DownloadStarted";
+    ERemoteClientLaunch[ERemoteClientLaunch["DownloadNoSpace"] = 11] = "DownloadNoSpace";
+    ERemoteClientLaunch[ERemoteClientLaunch["DownloadFiltered"] = 12] = "DownloadFiltered";
+    ERemoteClientLaunch[ERemoteClientLaunch["DownloadRequiresUI"] = 13] = "DownloadRequiresUI";
+    ERemoteClientLaunch[ERemoteClientLaunch["AccessDenied"] = 14] = "AccessDenied";
+    ERemoteClientLaunch[ERemoteClientLaunch["NetworkError"] = 15] = "NetworkError";
+    ERemoteClientLaunch[ERemoteClientLaunch["Progress"] = 16] = "Progress";
+    ERemoteClientLaunch[ERemoteClientLaunch["ParentalUnlockFailed"] = 17] = "ParentalUnlockFailed";
+    ERemoteClientLaunch[ERemoteClientLaunch["ScreenLocked"] = 18] = "ScreenLocked";
+    ERemoteClientLaunch[ERemoteClientLaunch["Unsupported"] = 19] = "Unsupported";
+    ERemoteClientLaunch[ERemoteClientLaunch["DisabledLocal"] = 20] = "DisabledLocal";
+    ERemoteClientLaunch[ERemoteClientLaunch["DisabledRemote"] = 21] = "DisabledRemote";
+    ERemoteClientLaunch[ERemoteClientLaunch["Broadcasting"] = 22] = "Broadcasting";
+    ERemoteClientLaunch[ERemoteClientLaunch["Busy"] = 23] = "Busy";
+    ERemoteClientLaunch[ERemoteClientLaunch["DriversNotInstalled"] = 24] = "DriversNotInstalled";
+    ERemoteClientLaunch[ERemoteClientLaunch["TransportUnavailable"] = 25] = "TransportUnavailable";
+    ERemoteClientLaunch[ERemoteClientLaunch["Canceled"] = 26] = "Canceled";
+    ERemoteClientLaunch[ERemoteClientLaunch["Invisible"] = 27] = "Invisible";
+    ERemoteClientLaunch[ERemoteClientLaunch["RestrictedCountry"] = 28] = "RestrictedCountry";
+    ERemoteClientLaunch[ERemoteClientLaunch["Unauthorized"] = 29] = "Unauthorized";
+})(ERemoteClientLaunch || (ERemoteClientLaunch = {}));
+export var EStreamVideoCodec;
+(function (EStreamVideoCodec) {
+    EStreamVideoCodec[EStreamVideoCodec["None"] = 0] = "None";
+    EStreamVideoCodec[EStreamVideoCodec["Raw"] = 1] = "Raw";
+    EStreamVideoCodec[EStreamVideoCodec["VP8"] = 2] = "VP8";
+    EStreamVideoCodec[EStreamVideoCodec["VP9"] = 3] = "VP9";
+    EStreamVideoCodec[EStreamVideoCodec["H264"] = 4] = "H264";
+    EStreamVideoCodec[EStreamVideoCodec["HEVC"] = 5] = "HEVC";
+    EStreamVideoCodec[EStreamVideoCodec["ORBX1"] = 6] = "ORBX1";
+    EStreamVideoCodec[EStreamVideoCodec["ORBX2"] = 7] = "ORBX2";
+    EStreamVideoCodec[EStreamVideoCodec["AV1"] = 8] = "AV1";
+})(EStreamVideoCodec || (EStreamVideoCodec = {}));
+export var EStreamHostPlayAudioPreference;
+(function (EStreamHostPlayAudioPreference) {
+    EStreamHostPlayAudioPreference[EStreamHostPlayAudioPreference["Default"] = 0] = "Default";
+    EStreamHostPlayAudioPreference[EStreamHostPlayAudioPreference["Always"] = 1] = "Always";
+})(EStreamHostPlayAudioPreference || (EStreamHostPlayAudioPreference = {}));
+export var EStreamQualityPreference;
+(function (EStreamQualityPreference) {
+    EStreamQualityPreference[EStreamQualityPreference["Automatic"] = -1] = "Automatic";
+    EStreamQualityPreference[EStreamQualityPreference["Fast"] = 1] = "Fast";
+    EStreamQualityPreference[EStreamQualityPreference["Balanced"] = 2] = "Balanced";
+    EStreamQualityPreference[EStreamQualityPreference["Beautiful"] = 3] = "Beautiful";
+})(EStreamQualityPreference || (EStreamQualityPreference = {}));
+export var EStreamP2PScope;
+(function (EStreamP2PScope) {
+    EStreamP2PScope[EStreamP2PScope["Automatic"] = 0] = "Automatic";
+    EStreamP2PScope[EStreamP2PScope["Disabled"] = 1] = "Disabled";
+    EStreamP2PScope[EStreamP2PScope["OnlyMe"] = 2] = "OnlyMe";
+    EStreamP2PScope[EStreamP2PScope["Friends"] = 3] = "Friends";
+    EStreamP2PScope[EStreamP2PScope["Everyone"] = 4] = "Everyone";
+})(EStreamP2PScope || (EStreamP2PScope = {}));

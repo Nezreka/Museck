@@ -1,0 +1,20 @@
+export var EInstallMgrState;
+(function (EInstallMgrState) {
+    EInstallMgrState[EInstallMgrState["None"] = 0] = "None";
+    EInstallMgrState[EInstallMgrState["Setup"] = 1] = "Setup";
+    EInstallMgrState[EInstallMgrState["WaitLicense"] = 2] = "WaitLicense";
+    EInstallMgrState[EInstallMgrState["FreeLicense"] = 3] = "FreeLicense";
+    EInstallMgrState[EInstallMgrState["ShowCDKey"] = 4] = "ShowCDKey";
+    EInstallMgrState[EInstallMgrState["WaitAppInfo"] = 5] = "WaitAppInfo";
+    EInstallMgrState[EInstallMgrState["ShowPassword"] = 6] = "ShowPassword";
+    EInstallMgrState[EInstallMgrState["ShowConfig"] = 7] = "ShowConfig";
+    EInstallMgrState[EInstallMgrState["ShowEULAs"] = 8] = "ShowEULAs";
+    EInstallMgrState[EInstallMgrState["CreateApps"] = 9] = "CreateApps";
+    EInstallMgrState[EInstallMgrState["ReadFromMedia"] = 10] = "ReadFromMedia";
+    EInstallMgrState[EInstallMgrState["ShowChangeMedia"] = 11] = "ShowChangeMedia";
+    EInstallMgrState[EInstallMgrState["WaitLegacyCDKeys"] = 12] = "WaitLegacyCDKeys";
+    EInstallMgrState[EInstallMgrState["ShowSignup"] = 13] = "ShowSignup";
+    EInstallMgrState[EInstallMgrState["Complete"] = 14] = "Complete";
+    EInstallMgrState[EInstallMgrState["Failed"] = 15] = "Failed";
+    EInstallMgrState[EInstallMgrState["Canceled"] = 16] = "Canceled";
+})(EInstallMgrState || (EInstallMgrState = {}));

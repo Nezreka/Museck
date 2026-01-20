@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "ESNext",
+    "target": "ES2020",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "moduleResolution": "Node",
+    "strict": true,
+    "noImplicitAny": true,
+    "declaration": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}

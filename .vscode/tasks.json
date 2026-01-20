@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pnpmsetup",
+      "type": "shell",
+      "command": "pnpm i",
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "pnpm run build",
+      "problemMatcher": [],
+      "dependsOn": ["pnpmsetup"]
+    },
+    {
+      "label": "deploy",
+      "type": "shell",
+      "command": "scp -P ${config:deckport} -r dist package.json plugin.json main.py LICENSE ${config:deckuser}@${config:deckip}:${config:deckdir}/homebrew/plugins/${config:pluginname}/",
+      "problemMatcher": [],
+      "options": {
+        "shell": {
+          "executable": "bash"
+        }
+      }
+    },
+    {
+      "label": "builddeploy",
+      "dependsOn": ["build", "deploy"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "restartdecky",
+      "type": "shell",
+      "command": "ssh -p ${config:deckport} ${config:deckuser}@${config:deckip} 'sudo systemctl restart plugin_loader'",
+      "problemMatcher": [],
+      "options": {
+        "shell": {
+          "executable": "bash"
+        }
+      }
+    },
+    {
+      "label": "builddeployrestart",
+      "dependsOn": ["builddeploy", "restartdecky"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

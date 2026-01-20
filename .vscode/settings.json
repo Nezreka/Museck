@@ -1,0 +1,11 @@
+{
+  "deckip": "192.168.86.39",
+  "deckport": "22",
+  "deckuser": "deck",
+  "deckpass": "8008",
+  "deckdir": "/home/deck",
+  "pluginname": "Museck",
+  "python.analysis.extraPaths": [
+    "./py_modules"
+  ]
+}
