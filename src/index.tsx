@@ -655,7 +655,8 @@ function SearchPage() {
       marginTop: "40px",
       height: "calc(100% - 40px)",
       overflowY: "auto",
-      overflowX: "hidden"
+      overflowX: "hidden",
+      paddingBottom: "60px"
     }}>
       <PanelSection title="Search Music">
         <PanelSectionRow>
@@ -818,6 +819,13 @@ function SearchPage() {
               </PanelSectionRow>
             </PanelSection>
           )}
+
+          {/* Bottom spacer for Steam UI */}
+          <PanelSection>
+            <PanelSectionRow>
+              <div style={{ height: "60px" }} />
+            </PanelSectionRow>
+          </PanelSection>
         </>
       )}
 
@@ -831,28 +839,45 @@ function SearchPage() {
           </PanelSectionRow>
         </PanelSection>
       )}
+      {/* Bottom spacer for Steam UI */}
+      <div style={{ height: "80px" }} />
     </div>
   );
 }
 
-// Full-screen Queue Page - Uses playback status queue directly
+// Full-screen Queue Page - Fetches queue with images
 function QueuePage() {
-  const [status, setStatus] = useState<PlaybackStatus | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+  const [totalTracks, setTotalTracks] = useState(0);
+  const [upNextTracks, setUpNextTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStatus = async () => {
+    const fetchQueue = async () => {
       try {
+        // Get current status
         const s = await getPlaybackStatus();
-        setStatus(s);
+        setCurrentTrack(s.current_track);
+        setCurrentIndex(s.queue_index);
+        setTotalTracks(s.queue?.length || 0);
+
+        // Fetch up next tracks with images
+        if (s.queue_index >= 0 && s.queue && s.queue.length > s.queue_index + 1) {
+          const result = await getQueueWithImages(s.queue_index + 1, 30);
+          if (result.success) {
+            setUpNextTracks(result.tracks);
+          }
+        }
         setLoading(false);
       } catch (e) {
         console.error("Failed to get queue:", e);
         setLoading(false);
       }
     };
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    fetchQueue();
+    // Only refresh every 5 seconds since fetching images is slower
+    const interval = setInterval(fetchQueue, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -860,18 +885,15 @@ function QueuePage() {
     await playQueueIndex(index);
   };
 
-  const queue = status?.queue || [];
-  const currentIndex = status?.queue_index ?? -1;
-  const currentTrack = status?.current_track;
-  const upNextTracks = queue.slice(currentIndex + 1, currentIndex + 31);
-  const remainingCount = Math.max(0, queue.length - currentIndex - 31);
+  const remainingCount = Math.max(0, totalTracks - currentIndex - 31);
 
   return (
     <div style={{
       marginTop: "40px",
       height: "calc(100% - 40px)",
       overflowY: "auto",
-      overflowX: "hidden"
+      overflowX: "hidden",
+      paddingBottom: "60px"
     }}>
       <PanelSection title="Queue">
         <PanelSectionRow>
@@ -882,7 +904,7 @@ function QueuePage() {
 
         <PanelSectionRow>
           <div style={{ fontSize: "12px", color: "#888" }}>
-            {queue.length} tracks in queue
+            {totalTracks} tracks in queue
           </div>
         </PanelSectionRow>
       </PanelSection>
@@ -937,7 +959,7 @@ function QueuePage() {
 
           {/* Up Next */}
           {upNextTracks.length > 0 && (
-            <PanelSection title={`Up Next (${queue.length - currentIndex - 1})`}>
+            <PanelSection title={`Up Next (${totalTracks - currentIndex - 1})`}>
               {upNextTracks.map((track, idx) => {
                 const actualIndex = currentIndex + 1 + idx;
                 return (
@@ -958,7 +980,11 @@ function QueuePage() {
                           alignItems: "center",
                           justifyContent: "center"
                         }}>
-                          <FaMusic style={{ color: "#666", fontSize: "12px" }} />
+                          {track.thumb ? (
+                            <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <FaMusic style={{ color: "#666", fontSize: "12px" }} />
+                          )}
                         </div>
                         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                           <div style={{ fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -979,11 +1005,15 @@ function QueuePage() {
                   </div>
                 </PanelSectionRow>
               )}
+              {/* Bottom spacer */}
+              <PanelSectionRow>
+                <div style={{ height: "60px" }} />
+              </PanelSectionRow>
             </PanelSection>
           )}
 
           {/* Empty State */}
-          {queue.length === 0 && (
+          {totalTracks === 0 && (
             <PanelSection>
               <PanelSectionRow>
                 <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
@@ -995,6 +1025,8 @@ function QueuePage() {
           )}
         </>
       )}
+      {/* Bottom spacer for Steam UI */}
+      <div style={{ height: "80px" }} />
     </div>
   );
 }

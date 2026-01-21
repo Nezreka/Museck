@@ -7,7 +7,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:magicpods.app)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(pnpm run build)",
+      "Bash(scp:*)"
     ]
   }
 }

@@ -124,7 +124,7 @@ const searchArtists = callable("search_artists");
 const getAlbumTracks = callable("get_album_tracks");
 const getArtistTracks = callable("get_artist_tracks");
 const playQueueIndex = callable("play_queue_index");
-callable("get_queue_with_images");
+const getQueueWithImages = callable("get_queue_with_images");
 // Helper to format time in mm:ss
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds))
@@ -415,7 +415,8 @@ function SearchPage() {
             marginTop: "40px",
             height: "calc(100% - 40px)",
             overflowY: "auto",
-            overflowX: "hidden"
+            overflowX: "hidden",
+            paddingBottom: "60px"
         }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Search Music", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { value: query, onChange: (e) => setQuery(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSearch, disabled: loading || !query.trim(), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaSearch, { style: { color: query.trim() ? "#1db954" : "#888" } }), loading ? "Searching..." : "Search"] }) }) })] }), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: "Searching..." }) }) })), !loading && searched && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [artists.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Artists", children: artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayArtist(artist), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [SP_JSX.jsx("div", { style: {
                                                 width: "40px",
                                                 height: "40px",
@@ -446,17 +447,30 @@ function SearchPage() {
                                                 display: "flex",
                                                 alignItems: "center",
                                                 justifyContent: "center"
-                                            }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsxs("div", { style: { fontSize: "11px", color: "#888" }, children: [track.artist, " \u2022 ", track.album] })] }), SP_JSX.jsx("div", { style: { color: "#888", fontSize: "10px" }, children: "TRACK" })] }) }) }, track.ratingKey))) })), artists.length === 0 && albums.length === 0 && tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: ["No results found for \"", query, "\""] }) }) }))] })), !loading && !searched && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaSearch, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Enter a search term above" })] }) }) }))] }));
+                                            }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsxs("div", { style: { fontSize: "11px", color: "#888" }, children: [track.artist, " \u2022 ", track.album] })] }), SP_JSX.jsx("div", { style: { color: "#888", fontSize: "10px" }, children: "TRACK" })] }) }) }, track.ratingKey))) })), artists.length === 0 && albums.length === 0 && tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: ["No results found for \"", query, "\""] }) }) })), SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { height: "60px" } }) }) })] })), !loading && !searched && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaSearch, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Enter a search term above" })] }) }) })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
 }
-// Full-screen Queue Page - Uses playback status queue directly
+// Full-screen Queue Page - Fetches queue with images
 function QueuePage() {
-    const [status, setStatus] = SP_REACT.useState(null);
+    const [currentTrack, setCurrentTrack] = SP_REACT.useState(null);
+    const [currentIndex, setCurrentIndex] = SP_REACT.useState(-1);
+    const [totalTracks, setTotalTracks] = SP_REACT.useState(0);
+    const [upNextTracks, setUpNextTracks] = SP_REACT.useState([]);
     const [loading, setLoading] = SP_REACT.useState(true);
     SP_REACT.useEffect(() => {
-        const fetchStatus = async () => {
+        const fetchQueue = async () => {
             try {
+                // Get current status
                 const s = await getPlaybackStatus();
-                setStatus(s);
+                setCurrentTrack(s.current_track);
+                setCurrentIndex(s.queue_index);
+                setTotalTracks(s.queue?.length || 0);
+                // Fetch up next tracks with images
+                if (s.queue_index >= 0 && s.queue && s.queue.length > s.queue_index + 1) {
+                    const result = await getQueueWithImages(s.queue_index + 1, 30);
+                    if (result.success) {
+                        setUpNextTracks(result.tracks);
+                    }
+                }
                 setLoading(false);
             }
             catch (e) {
@@ -464,24 +478,22 @@ function QueuePage() {
                 setLoading(false);
             }
         };
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 2000);
+        fetchQueue();
+        // Only refresh every 5 seconds since fetching images is slower
+        const interval = setInterval(fetchQueue, 5000);
         return () => clearInterval(interval);
     }, []);
     const handlePlayIndex = async (index) => {
         await playQueueIndex(index);
     };
-    const queue = status?.queue || [];
-    const currentIndex = status?.queue_index ?? -1;
-    const currentTrack = status?.current_track;
-    const upNextTracks = queue.slice(currentIndex + 1, currentIndex + 31);
-    const remainingCount = Math.max(0, queue.length - currentIndex - 31);
+    const remainingCount = Math.max(0, totalTracks - currentIndex - 31);
     return (SP_JSX.jsxs("div", { style: {
             marginTop: "40px",
             height: "calc(100% - 40px)",
             overflowY: "auto",
-            overflowX: "hidden"
-        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { fontSize: "12px", color: "#888" }, children: [queue.length, " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: "Loading..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+            overflowX: "hidden",
+            paddingBottom: "60px"
+        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { fontSize: "12px", color: "#888" }, children: [totalTracks, " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: "Loading..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
                                     display: "flex",
                                     alignItems: "center",
                                     gap: "10px",
@@ -498,7 +510,7 @@ function QueuePage() {
                                             display: "flex",
                                             alignItems: "center",
                                             justifyContent: "center"
-                                        }, children: currentTrack.thumb ? (SP_JSX.jsx("img", { src: currentTrack.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: currentTrack.title }), SP_JSX.jsx("div", { style: { fontSize: "11px", opacity: 0.9 }, children: currentTrack.artist })] })] }) }) })), upNextTracks.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: `Up Next (${queue.length - currentIndex - 1})`, children: [upNextTracks.map((track, idx) => {
+                                        }, children: currentTrack.thumb ? (SP_JSX.jsx("img", { src: currentTrack.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: currentTrack.title }), SP_JSX.jsx("div", { style: { fontSize: "11px", opacity: 0.9 }, children: currentTrack.artist })] })] }) }) })), upNextTracks.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: `Up Next (${totalTracks - currentIndex - 1})`, children: [upNextTracks.map((track, idx) => {
                                 const actualIndex = currentIndex + 1 + idx;
                                 return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayIndex(actualIndex), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [SP_JSX.jsx("span", { style: { fontSize: "11px", color: "#666", width: "20px" }, children: actualIndex + 1 }), SP_JSX.jsx("div", { style: {
                                                         width: "32px",
@@ -510,8 +522,8 @@ function QueuePage() {
                                                         display: "flex",
                                                         alignItems: "center",
                                                         justifyContent: "center"
-                                                    }, children: SP_JSX.jsx(FaMusic, { style: { color: "#666", fontSize: "12px" } }) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsx("div", { style: { fontSize: "10px", color: "#888" }, children: track.artist })] })] }) }) }, `${track.ratingKey}-${actualIndex}`));
-                            }), remainingCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "8px", color: "#666", fontSize: "11px" }, children: ["+ ", remainingCount, " more tracks"] }) }))] })), queue.length === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaList, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Queue is empty" })] }) }) }))] }))] }));
+                                                    }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666", fontSize: "12px" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsx("div", { style: { fontSize: "10px", color: "#888" }, children: track.artist })] })] }) }) }, `${track.ratingKey}-${actualIndex}`));
+                            }), remainingCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "8px", color: "#666", fontSize: "11px" }, children: ["+ ", remainingCount, " more tracks"] }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { height: "60px" } }) })] })), totalTracks === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaList, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Queue is empty" })] }) }) }))] })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
 }
 // QAM Settings Component (simplified - uses full-screen page for editing)
 function Settings() {
