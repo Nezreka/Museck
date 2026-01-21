@@ -31,8 +31,13 @@ class Plugin:
         "duration": 0,
         "volume": 75,
         "queue": [],
-        "queue_index": -1
+        "queue_index": -1,
+        "shuffle": False,
+        "loop": "off"  # "off", "queue", "single"
     }
+
+    # Original queue order (for unshuffle)
+    original_queue = []
 
     async def _main(self):
         """Called when plugin loads"""
@@ -407,10 +412,23 @@ class Plugin:
         """Automatically play next track when current ends"""
         queue = self.playback_state["queue"]
         index = self.playback_state["queue_index"]
-        if index < len(queue) - 1:
+        loop_mode = self.playback_state["loop"]
+
+        if loop_mode == "single" and 0 <= index < len(queue):
+            # Repeat the same track
+            track = queue[index]
+            await self.play_track(track.get("key"), track)
+        elif index < len(queue) - 1:
+            # Play next track
             self.playback_state["queue_index"] = index + 1
             track = queue[index + 1]
             await self.play_track(track.get("key"), track)
+        elif loop_mode == "queue" and len(queue) > 0:
+            # Loop back to start of queue
+            self.playback_state["queue_index"] = 0
+            track = queue[0]
+            await self.play_track(track.get("key"), track)
+        # else: end of queue, stop playing
 
     # === Queue Management ===
 
@@ -460,6 +478,90 @@ class Plugin:
             "queue": self.playback_state["queue"],
             "index": self.playback_state["queue_index"]
         }
+
+    async def play_queue_index(self, index: int):
+        """Jump to a specific track in the queue"""
+        queue = self.playback_state["queue"]
+        if 0 <= index < len(queue):
+            self.playback_state["queue_index"] = index
+            track = queue[index]
+            return await self.play_track(track.get("key"), track)
+        return {"success": False, "message": "Invalid queue index"}
+
+    async def get_queue_with_images(self, start_index: int = 0, count: int = 20):
+        """Get queue tracks with base64 images loaded"""
+        queue = self.playback_state["queue"]
+        current_index = self.playback_state["queue_index"]
+
+        # Get the requested slice of queue
+        end_index = min(start_index + count, len(queue))
+        tracks_slice = []
+
+        for i in range(start_index, end_index):
+            if i < len(queue):
+                track = queue[i].copy()  # Copy to not modify original
+
+                # Fetch base64 image if not already converted
+                thumb_path = track.get("thumb", "")
+                if thumb_path and not thumb_path.startswith("data:"):
+                    base64_img = self._fetch_image_as_base64(thumb_path)
+                    if base64_img:
+                        track["thumb"] = base64_img
+                        track["parentThumb"] = base64_img
+
+                tracks_slice.append(track)
+
+        return {
+            "success": True,
+            "tracks": tracks_slice,
+            "total": len(queue),
+            "current_index": current_index
+        }
+
+    async def toggle_shuffle(self):
+        """Toggle shuffle mode"""
+        import random
+
+        queue = self.playback_state["queue"]
+        index = self.playback_state["queue_index"]
+        current_track = queue[index] if 0 <= index < len(queue) else None
+
+        if self.playback_state["shuffle"]:
+            # Turn off shuffle - restore original order
+            self.playback_state["shuffle"] = False
+            if self.original_queue:
+                self.playback_state["queue"] = self.original_queue.copy()
+                # Find current track in restored queue
+                if current_track:
+                    for i, t in enumerate(self.playback_state["queue"]):
+                        if t.get("ratingKey") == current_track.get("ratingKey"):
+                            self.playback_state["queue_index"] = i
+                            break
+        else:
+            # Turn on shuffle
+            self.playback_state["shuffle"] = True
+            self.original_queue = queue.copy()
+
+            if current_track and len(queue) > 1:
+                # Remove current track, shuffle rest, put current at front
+                other_tracks = [t for t in queue if t.get("ratingKey") != current_track.get("ratingKey")]
+                random.shuffle(other_tracks)
+                self.playback_state["queue"] = [current_track] + other_tracks
+                self.playback_state["queue_index"] = 0
+
+        return {"success": True, "shuffle": self.playback_state["shuffle"]}
+
+    async def toggle_loop(self):
+        """Cycle through loop modes: off -> queue -> single -> off"""
+        current = self.playback_state["loop"]
+        if current == "off":
+            self.playback_state["loop"] = "queue"
+        elif current == "queue":
+            self.playback_state["loop"] = "single"
+        else:
+            self.playback_state["loop"] = "off"
+
+        return {"success": True, "loop": self.playback_state["loop"]}
 
     # === Plex API Methods ===
 
@@ -598,7 +700,7 @@ class Plugin:
         return {"success": True, "tracks": tracks}
 
     async def search(self, query: str, library_key: str = None):
-        """Search for music"""
+        """Search for tracks"""
         if library_key:
             endpoint = f"/library/sections/{library_key}/search?type=10&query={urllib.parse.quote(query)}"
         else:
@@ -609,7 +711,101 @@ class Plugin:
             return {"success": False, "results": []}
 
         tracks = self._parse_tracks(data.get("MediaContainer", {}).get("Metadata", []))
+
+        # Fetch cover art for first 10 tracks
+        for track in tracks[:10]:
+            if track.get("thumb") and not track["thumb"].startswith("data:"):
+                thumb_url = self._fetch_image_as_base64(track["thumb"])
+                track["thumb"] = thumb_url
+                track["parentThumb"] = thumb_url
+
         return {"success": True, "results": tracks}
+
+    async def search_albums(self, query: str, library_key: str = None):
+        """Search for albums"""
+        if library_key:
+            endpoint = f"/library/sections/{library_key}/search?type=9&query={urllib.parse.quote(query)}"
+        else:
+            endpoint = f"/search?type=9&query={urllib.parse.quote(query)}"
+
+        data = self._plex_request(endpoint)
+        if not data:
+            return {"success": False, "albums": []}
+
+        albums = []
+
+        for album in data.get("MediaContainer", {}).get("Metadata", []):
+            # Fetch album art as base64
+            thumb_path = album.get("thumb", "")
+            thumb_url = ""
+            if thumb_path:
+                thumb_url = self._fetch_image_as_base64(thumb_path)
+
+            albums.append({
+                "key": album.get("ratingKey"),
+                "title": album.get("title", "Unknown"),
+                "artist": album.get("parentTitle", "Unknown"),
+                "year": album.get("year"),
+                "thumb": thumb_url
+            })
+
+        return {"success": True, "albums": albums}
+
+    async def search_artists(self, query: str, library_key: str = None):
+        """Search for artists"""
+        if library_key:
+            endpoint = f"/library/sections/{library_key}/search?type=8&query={urllib.parse.quote(query)}"
+        else:
+            endpoint = f"/search?type=8&query={urllib.parse.quote(query)}"
+
+        data = self._plex_request(endpoint)
+        if not data:
+            return {"success": False, "artists": []}
+
+        artists = []
+
+        for artist in data.get("MediaContainer", {}).get("Metadata", []):
+            # Fetch artist art as base64
+            thumb_path = artist.get("thumb", "")
+            thumb_url = ""
+            if thumb_path:
+                thumb_url = self._fetch_image_as_base64(thumb_path)
+
+            artists.append({
+                "key": artist.get("ratingKey"),
+                "title": artist.get("title", "Unknown"),
+                "thumb": thumb_url
+            })
+
+        return {"success": True, "artists": artists}
+
+    async def get_artist_tracks(self, artist_key: str):
+        """Get all tracks by an artist (their full discography)"""
+        # First get all albums by the artist
+        albums_data = self._plex_request(f"/library/metadata/{artist_key}/children")
+        if not albums_data:
+            return {"success": False, "tracks": []}
+
+        all_tracks = []
+        albums = albums_data.get("MediaContainer", {}).get("Metadata", [])
+
+        # Get tracks from each album
+        for album in albums:
+            album_key = album.get("ratingKey")
+            if album_key:
+                tracks_data = self._plex_request(f"/library/metadata/{album_key}/children")
+                if tracks_data:
+                    tracks = self._parse_tracks(tracks_data.get("MediaContainer", {}).get("Metadata", []))
+                    all_tracks.extend(tracks)
+
+        # Fetch cover art for first 20 tracks
+        for track in all_tracks[:20]:
+            if track.get("thumb") and not track["thumb"].startswith("data:"):
+                thumb_url = self._fetch_image_as_base64(track["thumb"])
+                track["thumb"] = thumb_url
+                track["parentThumb"] = thumb_url
+
+        return {"success": True, "tracks": all_tracks}
 
     def _fetch_image_as_base64(self, thumb_path: str):
         """Fetch image from Plex and convert to base64 data URL"""
