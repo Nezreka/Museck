@@ -4,6 +4,7 @@ import socket
 import asyncio
 import subprocess
 import time
+import base64
 import decky
 # Using urllib since it's in stdlib (no external deps needed)
 import urllib.request
@@ -269,10 +270,18 @@ class Plugin:
         stream_url = f"{server_url}{track_key}?X-Plex-Token={token}"
         decky.logger.info(f"Playing: {stream_url}")
 
-        # Debug: Log track info including thumb
+        # Fetch album art as base64 for the current track
         if track_info:
-            decky.logger.info(f"Track thumb: {track_info.get('thumb', 'NO THUMB')}")
-            decky.logger.info(f"Track parentThumb: {track_info.get('parentThumb', 'NO PARENT THUMB')}")
+            thumb_path = track_info.get('thumb', '')
+            if thumb_path and not thumb_path.startswith('data:'):
+                decky.logger.info(f"Fetching album art for: {thumb_path}")
+                base64_thumb = self._fetch_image_as_base64(thumb_path)
+                if base64_thumb:
+                    track_info['thumb'] = base64_thumb
+                    track_info['parentThumb'] = base64_thumb
+                    decky.logger.info("Album art fetched successfully")
+                else:
+                    decky.logger.info("Failed to fetch album art")
 
         # Kill existing player if running
         await self.stop()
@@ -602,11 +611,36 @@ class Plugin:
         tracks = self._parse_tracks(data.get("MediaContainer", {}).get("Metadata", []))
         return {"success": True, "results": tracks}
 
+    def _fetch_image_as_base64(self, thumb_path: str):
+        """Fetch image from Plex and convert to base64 data URL"""
+        if not thumb_path:
+            return ""
+
+        server_url = self.settings.get("server_url", "")
+        token = self.settings.get("token", "")
+
+        try:
+            # Use transcoder for consistent sizing
+            encoded_thumb = urllib.parse.quote(thumb_path, safe='')
+            url = f"{server_url}/photo/:/transcode?width=100&height=100&minSize=1&url={encoded_thumb}&X-Plex-Token={token}"
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
+                image_data = response.read()
+                content_type = response.headers.get('Content-Type', 'image/jpeg')
+                b64_data = base64.b64encode(image_data).decode('utf-8')
+                return f"data:{content_type};base64,{b64_data}"
+        except Exception as e:
+            decky.logger.error(f"Failed to fetch image: {e}")
+            return ""
+
     def _parse_tracks(self, metadata: list):
         """Parse track metadata from Plex response"""
         tracks = []
-        server_url = self.settings.get("server_url", "")
-        token = self.settings.get("token", "")
 
         for track in metadata:
             # Get the media part for streaming
@@ -614,14 +648,8 @@ class Plugin:
             parts = media.get("Part", [{}])[0]
             stream_key = parts.get("key", "")
 
-            # Build thumb URL using Plex photo transcoder for better compatibility
+            # Get thumb path (don't fetch yet - will be fetched on demand)
             thumb_path = track.get("thumb", "") or track.get("parentThumb", "")
-            if thumb_path:
-                # URL encode the thumb path for the transcoder
-                encoded_thumb = urllib.parse.quote(thumb_path, safe='')
-                thumb_url = f"{server_url}/photo/:/transcode?width=200&height=200&minSize=1&url={encoded_thumb}&X-Plex-Token={token}"
-            else:
-                thumb_url = ""
 
             tracks.append({
                 "key": stream_key,
@@ -631,8 +659,8 @@ class Plugin:
                 "album": track.get("parentTitle", "Unknown"),
                 "duration": track.get("duration", 0),
                 "index": track.get("index", 0),
-                "thumb": thumb_url,
-                "parentThumb": thumb_url
+                "thumb": thumb_path,  # Store path, will convert to base64 when playing
+                "parentThumb": thumb_path
             })
 
         return tracks
