@@ -6,7 +6,8 @@
       "WebFetch(domain:wiki.deckbrew.xyz)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:www.npmjs.com)",
-      "WebFetch(domain:magicpods.app)"
+      "WebFetch(domain:magicpods.app)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

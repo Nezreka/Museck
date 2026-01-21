@@ -1,5 +1,7 @@
 import os
 import json
+import socket
+import asyncio
 import decky
 # Using urllib since it's in stdlib (no external deps needed)
 import urllib.request
@@ -152,3 +154,76 @@ class Plugin:
                 "success": False,
                 "message": f"Connection error: {str(e)}"
             }
+
+    async def discover_servers(self):
+        """Discover Plex servers on local network using GDM protocol"""
+        decky.logger.info("Starting Plex server discovery...")
+        servers = []
+
+        try:
+            # Create UDP socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.settimeout(3)  # 3 second timeout
+
+            # GDM discovery message
+            gdm_msg = b"M-SEARCH * HTTP/1.1\r\n\r\n"
+            gdm_port = 32414
+
+            # Send broadcast
+            sock.sendto(gdm_msg, ("255.255.255.255", gdm_port))
+            decky.logger.info("Sent GDM broadcast")
+
+            # Collect responses
+            start_time = asyncio.get_event_loop().time()
+            while (asyncio.get_event_loop().time() - start_time) < 3:
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    response = data.decode("utf-8")
+                    decky.logger.info(f"Got response from {addr[0]}")
+
+                    # Parse GDM response
+                    server_info = {
+                        "ip": addr[0],
+                        "port": "32400",  # Default Plex port
+                        "name": "Plex Server",
+                        "url": f"http://{addr[0]}:32400"
+                    }
+
+                    # Extract info from response
+                    for line in response.split("\r\n"):
+                        if line.startswith("Name:"):
+                            server_info["name"] = line.split(":", 1)[1].strip()
+                        elif line.startswith("Port:"):
+                            server_info["port"] = line.split(":", 1)[1].strip()
+                            server_info["url"] = f"http://{addr[0]}:{server_info['port']}"
+                        elif line.startswith("Resource-Identifier:"):
+                            server_info["id"] = line.split(":", 1)[1].strip()
+
+                    # Avoid duplicates
+                    if not any(s["ip"] == server_info["ip"] for s in servers):
+                        servers.append(server_info)
+                        decky.logger.info(f"Found server: {server_info['name']} at {server_info['url']}")
+
+                except socket.timeout:
+                    break
+                except Exception as e:
+                    decky.logger.error(f"Error receiving: {e}")
+                    break
+
+            sock.close()
+
+        except Exception as e:
+            decky.logger.error(f"Discovery error: {e}")
+            return {
+                "success": False,
+                "servers": [],
+                "message": f"Discovery failed: {str(e)}"
+            }
+
+        decky.logger.info(f"Discovery complete. Found {len(servers)} server(s)")
+        return {
+            "success": True,
+            "servers": servers,
+            "message": f"Found {len(servers)} server(s)" if servers else "No servers found"
+        }
