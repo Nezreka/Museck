@@ -22,6 +22,9 @@ class Plugin:
     # Audio player control (using ffplay)
     player_process = None
     player_paused = False
+    playback_start_time = None  # When track started playing
+    total_paused_time = 0  # Total time spent paused
+    pause_start_time = None  # When pause started
 
     # Playback state
     playback_state = {
@@ -316,6 +319,9 @@ class Plugin:
             ], stdout=subprocess.DEVNULL, stderr=log_file, env=env)
 
             self.player_paused = False
+            self.playback_start_time = time.time()  # Track when playback started
+            self.total_paused_time = 0
+            self.pause_start_time = None
             self.playback_state["is_playing"] = True
             self.playback_state["current_track"] = track_info
             self.playback_state["position"] = 0
@@ -335,6 +341,7 @@ class Plugin:
             try:
                 self.player_process.send_signal(signal.SIGSTOP)
                 self.player_paused = True
+                self.pause_start_time = time.time()  # Track when we paused
                 self.playback_state["is_playing"] = False
             except Exception as e:
                 decky.logger.error(f"Pause error: {e}")
@@ -347,6 +354,10 @@ class Plugin:
             try:
                 self.player_process.send_signal(signal.SIGCONT)
                 self.player_paused = False
+                # Add paused duration to total
+                if self.pause_start_time:
+                    self.total_paused_time += time.time() - self.pause_start_time
+                    self.pause_start_time = None
                 self.playback_state["is_playing"] = True
             except Exception as e:
                 decky.logger.error(f"Resume error: {e}")
@@ -405,6 +416,16 @@ class Plugin:
                 self.playback_state["is_playing"] = False
                 # Auto-play next track
                 await self._auto_next()
+
+        # Calculate current position based on elapsed time
+        if self.playback_start_time and self.playback_state["is_playing"]:
+            elapsed = time.time() - self.playback_start_time - self.total_paused_time
+            self.playback_state["position"] = min(elapsed, self.playback_state["duration"])
+        elif self.playback_start_time and self.player_paused:
+            # When paused, calculate position up to pause point
+            current_pause = time.time() - self.pause_start_time if self.pause_start_time else 0
+            elapsed = time.time() - self.playback_start_time - self.total_paused_time - current_pause
+            self.playback_state["position"] = min(elapsed, self.playback_state["duration"])
 
         return self.playback_state.copy()
 

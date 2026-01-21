@@ -186,8 +186,10 @@ function NowPlaying() {
   const track = status?.current_track;
   const isPlaying = status?.is_playing || false;
   const duration = status?.duration || 0;
+  const position = status?.position || 0;
   const shuffleOn = status?.shuffle || false;
   const loopMode = status?.loop || "off";
+  const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
     <>
@@ -226,9 +228,37 @@ function NowPlaying() {
                   <div style={{ fontSize: "12px", color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {track.artist}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#666" }}>
-                    {formatTime(duration)}
+                </div>
+              </div>
+            </PanelSectionRow>
+
+            {/* Progress Bar */}
+            <PanelSectionRow>
+              <div style={{ width: "100%" }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "11px",
+                  color: "#888"
+                }}>
+                  <span style={{ width: "35px", textAlign: "right" }}>{formatTime(position)}</span>
+                  <div style={{
+                    flex: 1,
+                    height: "4px",
+                    backgroundColor: "#333",
+                    borderRadius: "2px",
+                    overflow: "hidden"
+                  }}>
+                    <div style={{
+                      width: `${progressPercent}%`,
+                      height: "100%",
+                      backgroundColor: "#1db954",
+                      borderRadius: "2px",
+                      transition: "width 0.3s ease"
+                    }} />
                   </div>
+                  <span style={{ width: "35px" }}>{formatTime(duration)}</span>
                 </div>
               </div>
             </PanelSectionRow>
@@ -428,7 +458,7 @@ function NowPlaying() {
                   layout="below"
                   onClick={() => handlePlayPlaylist(pl)}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "230px" }}>
                     <div style={{
                       width: "36px",
                       height: "36px",
@@ -455,7 +485,7 @@ function NowPlaying() {
                         {pl.count} tracks
                       </div>
                     </div>
-                    <FaPlay style={{ fontSize: "12px", color: "#1db954" }} />
+                    <FaPlay style={{ fontSize: "12px", color: "#1db954", flexShrink: 0 }} />
                   </div>
                 </ButtonItem>
               </PanelSectionRow>
@@ -566,7 +596,7 @@ function SettingsPage() {
   );
 }
 
-// Full-screen Search Page
+// Full-screen Search Page - Uses PanelSection for proper Steam UI integration
 function SearchPage() {
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -582,22 +612,15 @@ function SearchPage() {
     setSearched(true);
 
     try {
-      // Search for tracks, albums, and artists in parallel
       const [tracksRes, albumsRes, artistsRes] = await Promise.all([
         searchPlex(query),
         searchAlbums(query),
         searchArtists(query)
       ]);
 
-      if (tracksRes.success) {
-        setTracks(tracksRes.results.slice(0, 10));
-      }
-      if (albumsRes.success) {
-        setAlbums(albumsRes.albums.slice(0, 10));
-      }
-      if (artistsRes.success) {
-        setArtists(artistsRes.artists.slice(0, 5));
-      }
+      if (tracksRes.success) setTracks(tracksRes.results.slice(0, 10));
+      if (albumsRes.success) setAlbums(albumsRes.albums.slice(0, 10));
+      if (artistsRes.success) setArtists(artistsRes.artists.slice(0, 5));
     } catch (e) {
       console.error("Search failed:", e);
     }
@@ -629,256 +652,207 @@ function SearchPage() {
 
   return (
     <div style={{
-      padding: "16px",
-      paddingTop: "40px",
-      color: "white",
-      minHeight: "100vh",
-      backgroundColor: "#0e0e0e"
+      marginTop: "40px",
+      height: "calc(100% - 40px)",
+      overflowY: "auto",
+      overflowX: "hidden"
     }}>
-      {/* Header */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        marginBottom: "20px"
-      }}>
-        <ButtonItem
-          layout="below"
-          onClick={() => Navigation.NavigateBack()}
-        >
-          ← Back
-        </ButtonItem>
-        <h2 style={{ margin: 0, fontSize: "18px", flex: 1 }}>Search Music</h2>
-      </div>
+      <PanelSection title="Search Music">
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
+            ← Back to Player
+          </ButtonItem>
+        </PanelSectionRow>
 
-      {/* Search Input */}
-      <div style={{ marginBottom: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-          <FaSearch style={{ color: "#1db954", fontSize: "16px" }} />
-          <span style={{ fontSize: "14px", color: "#888" }}>Enter search term:</span>
-        </div>
-        <TextField
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ width: "100%", fontSize: "16px" }}
-        />
-      </div>
+        <PanelSectionRow>
+          <TextField
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </PanelSectionRow>
 
-      {/* Search Button */}
-      <div style={{ marginBottom: "20px" }}>
-        <ButtonItem
-          layout="below"
-          onClick={handleSearch}
-          disabled={loading || !query.trim()}
-        >
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            color: query.trim() ? "#1db954" : "#888"
-          }}>
-            <FaSearch />
-            {loading ? "Searching..." : "Search"}
-          </div>
-        </ButtonItem>
-      </div>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+              <FaSearch style={{ color: query.trim() ? "#1db954" : "#888" }} />
+              {loading ? "Searching..." : "Search"}
+            </div>
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
 
-      {/* Results */}
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
-          Searching...
-        </div>
-      ) : searched ? (
+      {loading && (
+        <PanelSection>
+          <PanelSectionRow>
+            <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>Searching...</div>
+          </PanelSectionRow>
+        </PanelSection>
+      )}
+
+      {!loading && searched && (
         <>
-          {/* Artists Section - Bubble Style */}
+          {/* Artists */}
           {artists.length > 0 && (
-            <div style={{ marginBottom: "20px" }}>
-              <h3 style={{ fontSize: "13px", color: "#888", marginBottom: "12px" }}>Artists</h3>
-              <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "8px" }}>
-                {artists.map((artist) => (
-                  <ButtonItem
-                    key={artist.key}
-                    layout="below"
-                    onClick={() => handlePlayArtist(artist)}
-                  >
-                    <div style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: "8px",
-                      minWidth: "80px"
-                    }}>
+            <PanelSection title="Artists">
+              {artists.map((artist) => (
+                <PanelSectionRow key={artist.key}>
+                  <ButtonItem layout="below" onClick={() => handlePlayArtist(artist)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                       <div style={{
-                        width: "64px",
-                        height: "64px",
+                        width: "40px",
+                        height: "40px",
                         borderRadius: "50%",
                         backgroundColor: "#1db954",
                         overflow: "hidden",
+                        flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid #1db954"
+                        justifyContent: "center"
                       }}>
                         {artist.thumb ? (
                           <img src={artist.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <FaMusic style={{ color: "white", fontSize: "24px" }} />
+                          <FaMusic style={{ color: "white", fontSize: "16px" }} />
                         )}
                       </div>
-                      <div style={{
-                        fontSize: "11px",
-                        textAlign: "center",
-                        maxWidth: "80px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                        {artist.title}
-                      </div>
-                      <div style={{ fontSize: "9px", color: "#1db954" }}>ARTIST</div>
+                      <div style={{ flex: 1, textAlign: "left" }}>{artist.title}</div>
+                      <div style={{ color: "#1db954", fontSize: "10px" }}>ARTIST</div>
                     </div>
                   </ButtonItem>
-                ))}
-              </div>
-            </div>
+                </PanelSectionRow>
+              ))}
+            </PanelSection>
           )}
 
-          {/* Albums Section */}
+          {/* Albums */}
           {albums.length > 0 && (
-            <div style={{ marginBottom: "20px" }}>
-              <h3 style={{ fontSize: "13px", color: "#888", marginBottom: "8px" }}>Albums</h3>
+            <PanelSection title="Albums">
               {albums.map((album) => (
-                <ButtonItem
-                  key={album.key}
-                  layout="below"
-                  onClick={() => handlePlayAlbum(album)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "4px",
-                      backgroundColor: "#333",
-                      overflow: "hidden",
-                      flexShrink: 0
-                    }}>
-                      {album.thumb ? (
-                        <img src={album.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : (
-                        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <PanelSectionRow key={album.key}>
+                  <ButtonItem layout="below" onClick={() => handlePlayAlbum(album)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{
+                        width: "40px",
+                        height: "40px",
+                        borderRadius: "4px",
+                        backgroundColor: "#333",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        {album.thumb ? (
+                          <img src={album.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
                           <FaMusic style={{ color: "#666" }} />
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                        <div style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {album.title}
                         </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                      <div style={{ fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {album.title}
+                        <div style={{ fontSize: "11px", color: "#888" }}>
+                          {album.artist} {album.year && `• ${album.year}`}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#888" }}>
-                        {album.artist} {album.year && `• ${album.year}`}
-                      </div>
+                      <div style={{ color: "#1db954", fontSize: "10px" }}>ALBUM</div>
                     </div>
-                    <div style={{ color: "#1db954", fontSize: "10px" }}>ALBUM</div>
-                  </div>
-                </ButtonItem>
+                  </ButtonItem>
+                </PanelSectionRow>
               ))}
-            </div>
+            </PanelSection>
           )}
 
-          {/* Tracks Section */}
+          {/* Tracks */}
           {tracks.length > 0 && (
-            <div>
-              <h3 style={{ fontSize: "13px", color: "#888", marginBottom: "8px" }}>Tracks</h3>
+            <PanelSection title="Tracks">
               {tracks.map((track) => (
-                <ButtonItem
-                  key={track.ratingKey}
-                  layout="below"
-                  onClick={() => handlePlayTrack(track, tracks)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "4px",
-                      backgroundColor: "#333",
-                      overflow: "hidden",
-                      flexShrink: 0
-                    }}>
-                      {track.thumb ? (
-                        <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : (
-                        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <PanelSectionRow key={track.ratingKey}>
+                  <ButtonItem layout="below" onClick={() => handlePlayTrack(track, tracks)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{
+                        width: "40px",
+                        height: "40px",
+                        borderRadius: "4px",
+                        backgroundColor: "#333",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        {track.thumb ? (
+                          <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
                           <FaMusic style={{ color: "#666" }} />
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                        <div style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {track.title}
                         </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                      <div style={{ fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {track.title}
+                        <div style={{ fontSize: "11px", color: "#888" }}>
+                          {track.artist} • {track.album}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#888" }}>
-                        {track.artist} • {track.album}
-                      </div>
+                      <div style={{ color: "#888", fontSize: "10px" }}>TRACK</div>
                     </div>
-                    <div style={{ color: "#888", fontSize: "10px" }}>TRACK</div>
-                  </div>
-                </ButtonItem>
+                  </ButtonItem>
+                </PanelSectionRow>
               ))}
-            </div>
+            </PanelSection>
           )}
 
           {/* No Results */}
           {artists.length === 0 && albums.length === 0 && tracks.length === 0 && (
-            <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
-              No results found for "{query}"
-            </div>
+            <PanelSection>
+              <PanelSectionRow>
+                <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>
+                  No results found for "{query}"
+                </div>
+              </PanelSectionRow>
+            </PanelSection>
           )}
         </>
-      ) : (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#666" }}>
-          <FaSearch style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.3 }} />
-          <div style={{ fontSize: "14px" }}>Search for tracks or albums</div>
-        </div>
+      )}
+
+      {!loading && !searched && (
+        <PanelSection>
+          <PanelSectionRow>
+            <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
+              <FaSearch style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.3 }} />
+              <div>Enter a search term above</div>
+            </div>
+          </PanelSectionRow>
+        </PanelSection>
       )}
     </div>
   );
 }
 
-// Full-screen Queue Page
+// Full-screen Queue Page - Uses playback status queue directly
 function QueuePage() {
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(-1);
-  const [queueTracks, setQueueTracks] = useState<Track[]>([]);
-  const [totalTracks, setTotalTracks] = useState(0);
+  const [status, setStatus] = useState<PlaybackStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchQueue = async () => {
+    const fetchStatus = async () => {
       try {
-        // First get current status for the now playing track
-        const status = await getPlaybackStatus();
-        setCurrentTrack(status.current_track);
-        setCurrentIndex(status.queue_index);
-        setTotalTracks(status.queue?.length || 0);
-
-        // Then fetch queue tracks with images (up to 30 tracks after current)
-        if (status.queue_index >= 0) {
-          const queueData = await getQueueWithImages(status.queue_index + 1, 30);
-          if (queueData.success) {
-            setQueueTracks(queueData.tracks);
-          }
-        }
+        const s = await getPlaybackStatus();
+        setStatus(s);
         setLoading(false);
       } catch (e) {
         console.error("Failed to get queue:", e);
         setLoading(false);
       }
     };
-    fetchQueue();
-
-    // Refresh every 3 seconds
-    const interval = setInterval(fetchQueue, 3000);
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -886,42 +860,50 @@ function QueuePage() {
     await playQueueIndex(index);
   };
 
-  const remainingCount = Math.max(0, totalTracks - currentIndex - 31);
+  const queue = status?.queue || [];
+  const currentIndex = status?.queue_index ?? -1;
+  const currentTrack = status?.current_track;
+  const upNextTracks = queue.slice(currentIndex + 1, currentIndex + 31);
+  const remainingCount = Math.max(0, queue.length - currentIndex - 31);
 
   return (
-    <PanelSection>
-      {/* Back Button */}
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-          ← Back to Player
-        </ButtonItem>
-      </PanelSectionRow>
+    <div style={{
+      marginTop: "40px",
+      height: "calc(100% - 40px)",
+      overflowY: "auto",
+      overflowX: "hidden"
+    }}>
+      <PanelSection title="Queue">
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
+            ← Back to Player
+          </ButtonItem>
+        </PanelSectionRow>
 
-      {/* Header */}
-      <PanelSectionRow>
-        <div style={{ fontSize: "16px", fontWeight: "bold", padding: "8px 0" }}>
-          Queue ({totalTracks} tracks)
-        </div>
-      </PanelSectionRow>
+        <PanelSectionRow>
+          <div style={{ fontSize: "12px", color: "#888" }}>
+            {queue.length} tracks in queue
+          </div>
+        </PanelSectionRow>
+      </PanelSection>
 
       {loading ? (
-        <PanelSectionRow>
-          <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>Loading queue...</div>
-        </PanelSectionRow>
+        <PanelSection>
+          <PanelSectionRow>
+            <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>Loading...</div>
+          </PanelSectionRow>
+        </PanelSection>
       ) : (
         <>
-          {/* Current Track */}
+          {/* Now Playing */}
           {currentTrack && (
-            <>
-              <PanelSectionRow>
-                <div style={{ fontSize: "12px", color: "#1db954", padding: "4px 0" }}>Now Playing</div>
-              </PanelSectionRow>
+            <PanelSection title="Now Playing">
               <PanelSectionRow>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "10px",
-                  padding: "10px",
+                  padding: "8px",
                   backgroundColor: "#1db954",
                   borderRadius: "8px"
                 }}>
@@ -930,47 +912,39 @@ function QueuePage() {
                     height: "40px",
                     borderRadius: "4px",
                     backgroundColor: "rgba(0,0,0,0.2)",
+                    overflow: "hidden",
+                    flexShrink: 0,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                    overflow: "hidden"
+                    justifyContent: "center"
                   }}>
                     {currentTrack.thumb ? (
                       <img src={currentTrack.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
-                      <FaMusic style={{ color: "white", fontSize: "16px" }} />
+                      <FaMusic style={{ color: "white" }} />
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {currentTrack.title}
                     </div>
-                    <div style={{ fontSize: "11px", opacity: 0.9 }}>
-                      {currentTrack.artist}
-                    </div>
+                    <div style={{ fontSize: "11px", opacity: 0.9 }}>{currentTrack.artist}</div>
                   </div>
                 </div>
               </PanelSectionRow>
-            </>
+            </PanelSection>
           )}
 
           {/* Up Next */}
-          {queueTracks.length > 0 && (
-            <>
-              <PanelSectionRow>
-                <div style={{ fontSize: "12px", color: "#888", padding: "8px 0 4px 0" }}>
-                  Up Next ({totalTracks - currentIndex - 1} tracks)
-                </div>
-              </PanelSectionRow>
-
-              {queueTracks.map((track, idx) => {
+          {upNextTracks.length > 0 && (
+            <PanelSection title={`Up Next (${queue.length - currentIndex - 1})`}>
+              {upNextTracks.map((track, idx) => {
                 const actualIndex = currentIndex + 1 + idx;
                 return (
                   <PanelSectionRow key={`${track.ratingKey}-${actualIndex}`}>
                     <ButtonItem layout="below" onClick={() => handlePlayIndex(actualIndex)}>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <span style={{ fontSize: "11px", color: "#666", width: "20px", textAlign: "right" }}>
+                        <span style={{ fontSize: "11px", color: "#666", width: "20px" }}>
                           {actualIndex + 1}
                         </span>
                         <div style={{
@@ -978,25 +952,19 @@ function QueuePage() {
                           height: "32px",
                           borderRadius: "4px",
                           backgroundColor: "#333",
+                          overflow: "hidden",
+                          flexShrink: 0,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                          overflow: "hidden"
+                          justifyContent: "center"
                         }}>
-                          {track.thumb ? (
-                            <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          ) : (
-                            <FaMusic style={{ color: "#666", fontSize: "12px" }} />
-                          )}
+                          <FaMusic style={{ color: "#666", fontSize: "12px" }} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                           <div style={{ fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {track.title}
                           </div>
-                          <div style={{ fontSize: "10px", color: "#888" }}>
-                            {track.artist}
-                          </div>
+                          <div style={{ fontSize: "10px", color: "#888" }}>{track.artist}</div>
                         </div>
                       </div>
                     </ButtonItem>
@@ -1011,21 +979,23 @@ function QueuePage() {
                   </div>
                 </PanelSectionRow>
               )}
-            </>
+            </PanelSection>
           )}
 
-          {/* Empty Queue */}
-          {totalTracks === 0 && (
-            <PanelSectionRow>
-              <div style={{ textAlign: "center", padding: "40px 20px", color: "#666" }}>
-                <FaList style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.3 }} />
-                <div style={{ fontSize: "13px" }}>Queue is empty</div>
-              </div>
-            </PanelSectionRow>
+          {/* Empty State */}
+          {queue.length === 0 && (
+            <PanelSection>
+              <PanelSectionRow>
+                <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
+                  <FaList style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.3 }} />
+                  <div>Queue is empty</div>
+                </div>
+              </PanelSectionRow>
+            </PanelSection>
           )}
         </>
       )}
-    </PanelSection>
+    </div>
   );
 }
 
