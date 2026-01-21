@@ -78,21 +78,179 @@ function IconBase(props) {
 // THIS FILE IS AUTO GENERATED
 function FaCog (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M487.4 315.7l-42.6-24.6c4.3-23.2 4.3-47 0-70.2l42.6-24.6c4.9-2.8 7.1-8.6 5.5-14-11.1-35.6-30-67.8-54.7-94.6-3.8-4.1-10-5.1-14.8-2.3L380.8 110c-17.9-15.4-38.5-27.3-60.8-35.1V25.8c0-5.6-3.9-10.5-9.4-11.7-36.7-8.2-74.3-7.8-109.2 0-5.5 1.2-9.4 6.1-9.4 11.7V75c-22.2 7.9-42.8 19.8-60.8 35.1L88.7 85.5c-4.9-2.8-11-1.9-14.8 2.3-24.7 26.7-43.6 58.9-54.7 94.6-1.7 5.4.6 11.2 5.5 14L67.3 221c-4.3 23.2-4.3 47 0 70.2l-42.6 24.6c-4.9 2.8-7.1 8.6-5.5 14 11.1 35.6 30 67.8 54.7 94.6 3.8 4.1 10 5.1 14.8 2.3l42.6-24.6c17.9 15.4 38.5 27.3 60.8 35.1v49.2c0 5.6 3.9 10.5 9.4 11.7 36.7 8.2 74.3 7.8 109.2 0 5.5-1.2 9.4-6.1 9.4-11.7v-49.2c22.2-7.9 42.8-19.8 60.8-35.1l42.6 24.6c4.9 2.8 11 1.9 14.8-2.3 24.7-26.7 43.6-58.9 54.7-94.6 1.5-5.5-.7-11.3-5.6-14.1zM256 336c-44.1 0-80-35.9-80-80s35.9-80 80-80 80 35.9 80 80-35.9 80-80 80z"},"child":[]}]})(props);
+}function FaList (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M80 368H16a16 16 0 0 0-16 16v64a16 16 0 0 0 16 16h64a16 16 0 0 0 16-16v-64a16 16 0 0 0-16-16zm0-320H16A16 16 0 0 0 0 64v64a16 16 0 0 0 16 16h64a16 16 0 0 0 16-16V64a16 16 0 0 0-16-16zm0 160H16a16 16 0 0 0-16 16v64a16 16 0 0 0 16 16h64a16 16 0 0 0 16-16v-64a16 16 0 0 0-16-16zm416 176H176a16 16 0 0 0-16 16v32a16 16 0 0 0 16 16h320a16 16 0 0 0 16-16v-32a16 16 0 0 0-16-16zm0-320H176a16 16 0 0 0-16 16v32a16 16 0 0 0 16 16h320a16 16 0 0 0 16-16V80a16 16 0 0 0-16-16zm0 160H176a16 16 0 0 0-16 16v32a16 16 0 0 0 16 16h320a16 16 0 0 0 16-16v-32a16 16 0 0 0-16-16z"},"child":[]}]})(props);
 }function FaMusic (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M470.38 1.51L150.41 96A32 32 0 0 0 128 126.51v261.41A139 139 0 0 0 96 384c-53 0-96 28.66-96 64s43 64 96 64 96-28.66 96-64V214.32l256-75v184.61a138.4 138.4 0 0 0-32-3.93c-53 0-96 28.66-96 64s43 64 96 64 96-28.65 96-64V32a32 32 0 0 0-41.62-30.49z"},"child":[]}]})(props);
+}function FaPause (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M144 479H48c-26.5 0-48-21.5-48-48V79c0-26.5 21.5-48 48-48h96c26.5 0 48 21.5 48 48v352c0 26.5-21.5 48-48 48zm304-48V79c0-26.5-21.5-48-48-48h-96c-26.5 0-48 21.5-48 48v352c0 26.5 21.5 48 48 48h96c26.5 0 48-21.5 48-48z"},"child":[]}]})(props);
+}function FaPlay (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M424.4 214.7L72.4 6.6C43.8-10.3 0 6.1 0 47.9V464c0 37.5 40.7 60.1 72.4 41.3l352-208c31.4-18.5 31.5-64.1 0-82.6z"},"child":[]}]})(props);
 }function FaPlug (props) {
   return GenIcon({"attr":{"viewBox":"0 0 384 512"},"child":[{"tag":"path","attr":{"d":"M320,32a32,32,0,0,0-64,0v96h64Zm48,128H16A16,16,0,0,0,0,176v32a16,16,0,0,0,16,16H32v32A160.07,160.07,0,0,0,160,412.8V512h64V412.8A160.07,160.07,0,0,0,352,256V224h16a16,16,0,0,0,16-16V176A16,16,0,0,0,368,160ZM128,32a32,32,0,0,0-64,0v96h64Z"},"child":[]}]})(props);
 }function FaSearch (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"},"child":[]}]})(props);
 }function FaServer (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M480 160H32c-17.673 0-32-14.327-32-32V64c0-17.673 14.327-32 32-32h448c17.673 0 32 14.327 32 32v64c0 17.673-14.327 32-32 32zm-48-88c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24zm-64 0c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24zm112 248H32c-17.673 0-32-14.327-32-32v-64c0-17.673 14.327-32 32-32h448c17.673 0 32 14.327 32 32v64c0 17.673-14.327 32-32 32zm-48-88c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24zm-64 0c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24zm112 248H32c-17.673 0-32-14.327-32-32v-64c0-17.673 14.327-32 32-32h448c17.673 0 32 14.327 32 32v64c0 17.673-14.327 32-32 32zm-48-88c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24zm-64 0c-13.255 0-24 10.745-24 24s10.745 24 24 24 24-10.745 24-24-10.745-24-24-24z"},"child":[]}]})(props);
+}function FaStepBackward (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M64 468V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12v176.4l195.5-181C352.1 22.3 384 36.6 384 64v384c0 27.4-31.9 41.7-52.5 24.6L136 292.7V468c0 6.6-5.4 12-12 12H76c-6.6 0-12-5.4-12-12z"},"child":[]}]})(props);
+}function FaStepForward (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M384 44v424c0 6.6-5.4 12-12 12h-48c-6.6 0-12-5.4-12-12V291.6l-195.5 181C95.9 489.7 64 475.4 64 448V64c0-27.4 31.9-41.7 52.5-24.6L312 219.3V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12z"},"child":[]}]})(props);
 }
 
-// Backend callable functions
+// Backend callable functions - Settings
 const getSettings = callable("get_settings");
 const saveSettings = callable("save_settings");
 const testConnection = callable("test_connection");
 const discoverServers = callable("discover_servers");
+// Backend callable functions - Playback
+const togglePlayPause = callable("toggle_play_pause");
+const getPlaybackStatus = callable("get_playback_status");
+const nextTrack = callable("next_track");
+const previousTrack = callable("previous_track");
+const setQueue = callable("set_queue");
+// Backend callable functions - Plex API
+const getPlaylists = callable("get_playlists");
+const getPlaylistTracks = callable("get_playlist_tracks");
+// Helper to format time in mm:ss
+function formatTime(seconds) {
+    if (!seconds || isNaN(seconds))
+        return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+// Now Playing Component
+function NowPlaying() {
+    const [status, setStatus] = SP_REACT.useState(null);
+    const [playlists, setPlaylists] = SP_REACT.useState([]);
+    SP_REACT.useState("");
+    const [loading, setLoading] = SP_REACT.useState(true);
+    // Poll playback status
+    SP_REACT.useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const s = await getPlaybackStatus();
+                setStatus(s);
+            }
+            catch (e) {
+                console.error("Failed to get playback status:", e);
+            }
+        };
+        fetchStatus();
+        const interval = setInterval(fetchStatus, 1000);
+        return () => clearInterval(interval);
+    }, []);
+    // Load playlists
+    SP_REACT.useEffect(() => {
+        const loadLibrary = async () => {
+            setLoading(true);
+            try {
+                const playlistsRes = await getPlaylists();
+                if (playlistsRes.success)
+                    setPlaylists(playlistsRes.playlists);
+            }
+            catch (e) {
+                console.error("Failed to load library:", e);
+            }
+            setLoading(false);
+        };
+        loadLibrary();
+    }, []);
+    const handlePlayPause = async () => {
+        await togglePlayPause();
+    };
+    const handleNext = async () => {
+        await nextTrack();
+    };
+    const handlePrevious = async () => {
+        await previousTrack();
+    };
+    const handlePlayPlaylist = async (playlist) => {
+        const result = await getPlaylistTracks(playlist.key);
+        if (result.success && result.tracks.length > 0) {
+            await setQueue(result.tracks, 0);
+        }
+    };
+    const track = status?.current_track;
+    const isPlaying = status?.is_playing || false;
+    const duration = status?.duration || 0;
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: track ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", gap: "12px", alignItems: "center" }, children: [SP_JSX.jsxs("div", { style: {
+                                            width: "56px",
+                                            height: "56px",
+                                            borderRadius: "4px",
+                                            backgroundColor: "#333",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            flexShrink: 0,
+                                            overflow: "hidden",
+                                            position: "relative"
+                                        }, children: [SP_JSX.jsx(FaMusic, { style: { fontSize: "24px", color: "#666", position: "absolute" } }), (track.thumb || track.parentThumb) && (SP_JSX.jsx("img", { src: track.thumb || track.parentThumb, style: { width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1 }, onError: (e) => { e.target.style.display = 'none'; } }))] }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsx("div", { style: { fontSize: "12px", color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.artist }), SP_JSX.jsx("div", { style: { fontSize: "11px", color: "#666" }, children: formatTime(duration) })] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "center", gap: "8px", width: "100%" }, children: [SP_JSX.jsx("button", { onClick: handlePrevious, style: {
+                                            background: "#1a1a1a",
+                                            border: "none",
+                                            borderRadius: "50%",
+                                            width: "44px",
+                                            height: "44px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: "white"
+                                        }, children: SP_JSX.jsx(FaStepBackward, { style: { fontSize: "18px" } }) }), SP_JSX.jsx("button", { onClick: handlePlayPause, style: {
+                                            background: "#1db954",
+                                            border: "none",
+                                            borderRadius: "50%",
+                                            width: "52px",
+                                            height: "52px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: "white"
+                                        }, children: isPlaying ? SP_JSX.jsx(FaPause, { style: { fontSize: "22px" } }) : SP_JSX.jsx(FaPlay, { style: { fontSize: "22px", marginLeft: "3px" } }) }), SP_JSX.jsx("button", { onClick: handleNext, style: {
+                                            background: "#1a1a1a",
+                                            border: "none",
+                                            borderRadius: "50%",
+                                            width: "44px",
+                                            height: "44px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: "white"
+                                        }, children: SP_JSX.jsx(FaStepForward, { style: { fontSize: "18px" } }) })] }) })] })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "16px", color: "#888" }, children: "Select a playlist to start playing" }) })) }), SP_JSX.jsx(DFL.PanelSection, { title: "Search", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            backgroundColor: "#1a1a1a",
+                            padding: "8px 12px",
+                            borderRadius: "4px",
+                            width: "100%"
+                        }, children: [SP_JSX.jsx(FaSearch, { style: { color: "#666" } }), SP_JSX.jsx("span", { style: { color: "#666", fontSize: "13px" }, children: "Search coming soon..." })] }) }) }), SP_JSX.jsx(DFL.PanelSection, { title: "Playlists", children: loading ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", color: "#888" }, children: "Loading..." }) })) : playlists.length > 0 ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                            display: "flex",
+                            overflowX: "auto",
+                            gap: "8px",
+                            paddingBottom: "8px",
+                            scrollbarWidth: "none"
+                        }, children: playlists.map((pl) => (SP_JSX.jsxs("div", { onClick: () => handlePlayPlaylist(pl), style: {
+                                minWidth: "38%",
+                                maxWidth: "38%",
+                                padding: "10px",
+                                backgroundColor: "#1a1a1a",
+                                borderRadius: "8px",
+                                cursor: "pointer",
+                                textAlign: "center",
+                                flexShrink: 0
+                            }, children: [SP_JSX.jsx(FaList, { style: { fontSize: "24px", color: "#1db954", marginBottom: "6px" } }), SP_JSX.jsx("div", { style: {
+                                        fontSize: "11px",
+                                        fontWeight: "500",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        marginBottom: "2px"
+                                    }, children: pl.title }), SP_JSX.jsxs("div", { style: { fontSize: "10px", color: "#888" }, children: [pl.count, " tracks"] })] }, pl.key))) }) })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", color: "#888", fontSize: "12px" }, children: "No playlists found" }) })) })] }));
+}
 // Full-screen Settings Page (keyboard works properly here)
 function SettingsPage() {
     const [serverUrl, setServerUrl] = SP_REACT.useState("");
@@ -226,8 +384,8 @@ function Settings() {
 }
 // Main Content Component
 function Content() {
-    const [view, setView] = SP_REACT.useState("settings");
-    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Navigation", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("player"), disabled: view === "player", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaMusic, {}), " Player"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), disabled: view === "settings", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }) })] }), view === "settings" && SP_JSX.jsx(Settings, {}), view === "player" && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: ["No music playing.", SP_JSX.jsx("br", {}), "Configure your Plex server in Settings first."] }) }) }))] }));
+    const [view, setView] = SP_REACT.useState("player");
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Museck", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("player"), disabled: view === "player", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaMusic, {}), " Player"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), disabled: view === "settings", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }) })] }), view === "settings" && SP_JSX.jsx(Settings, {}), view === "player" && SP_JSX.jsx(NowPlaying, {})] }));
 }
 var index = DFL.definePlugin(() => {
     console.log("Museck plugin loaded!");
