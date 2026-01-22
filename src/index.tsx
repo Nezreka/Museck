@@ -7,7 +7,7 @@ import {
   TextField,
   Navigation,
 } from "@decky/ui";
-import { callable, routerHook } from "@decky/api";
+import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect } from "react";
 import {
   FaMusic,
@@ -1249,6 +1249,52 @@ function Content() {
   );
 }
 
+// Track change watcher for toast notifications
+let lastTrackKey: string | null = null;
+let watcherInterval: ReturnType<typeof setInterval> | null = null;
+
+async function startTrackWatcher() {
+  console.log("Museck: Starting track watcher");
+
+  const checkTrack = async () => {
+    try {
+      const status = await getPlaybackStatus();
+      const track = status.current_track;
+
+      if (track && track.ratingKey !== lastTrackKey) {
+        lastTrackKey = track.ratingKey;
+
+        // Show toast notification for new track
+        toaster.toast({
+          title: "Now Playing",
+          body: `${track.title} - ${track.artist}`,
+          duration: 3000,
+          icon: <FaMusic />,
+        });
+
+        console.log(`Museck: Now playing - ${track.title}`);
+      } else if (!track && lastTrackKey) {
+        lastTrackKey = null;
+      }
+    } catch (e) {
+      console.error("Museck: Track watcher error:", e);
+    }
+  };
+
+  // Check immediately and then every 2 seconds
+  await checkTrack();
+  watcherInterval = setInterval(checkTrack, 2000);
+}
+
+function stopTrackWatcher() {
+  if (watcherInterval) {
+    clearInterval(watcherInterval);
+    watcherInterval = null;
+  }
+  lastTrackKey = null;
+  console.log("Museck: Track watcher stopped");
+}
+
 export default definePlugin(() => {
   console.log("Museck plugin loaded!");
 
@@ -1263,6 +1309,9 @@ export default definePlugin(() => {
     exact: true,
   });
 
+  // Start the track watcher for toast notifications
+  startTrackWatcher();
+
   return {
     name: "Museck",
     titleView: <div className={staticClasses.Title}>Museck</div>,
@@ -1274,6 +1323,9 @@ export default definePlugin(() => {
       routerHook.removeRoute("/museck-settings");
       routerHook.removeRoute("/museck-search");
       routerHook.removeRoute("/museck-queue");
+
+      // Stop the track watcher
+      stopTrackWatcher();
     },
   };
 });

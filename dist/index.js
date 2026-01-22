@@ -17,6 +17,7 @@ if (api._version != API_VERSION) {
 }
 const callable = api.callable;
 const routerHook = api.routerHook;
+const toaster = api.toaster;
 
 var DefaultContext = {
   color: undefined,
@@ -617,6 +618,46 @@ function Content() {
     const [view, setView] = SP_REACT.useState("player");
     return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Museck", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("player"), disabled: view === "player", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaMusic, {}), " Player"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), disabled: view === "settings", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }) })] }), view === "settings" && SP_JSX.jsx(Settings, {}), view === "player" && SP_JSX.jsx(NowPlaying, {})] }));
 }
+// Track change watcher for toast notifications
+let lastTrackKey = null;
+let watcherInterval = null;
+async function startTrackWatcher() {
+    console.log("Museck: Starting track watcher");
+    const checkTrack = async () => {
+        try {
+            const status = await getPlaybackStatus();
+            const track = status.current_track;
+            if (track && track.ratingKey !== lastTrackKey) {
+                lastTrackKey = track.ratingKey;
+                // Show toast notification for new track
+                toaster.toast({
+                    title: "Now Playing",
+                    body: `${track.title} - ${track.artist}`,
+                    duration: 3000,
+                    icon: SP_JSX.jsx(FaMusic, {}),
+                });
+                console.log(`Museck: Now playing - ${track.title}`);
+            }
+            else if (!track && lastTrackKey) {
+                lastTrackKey = null;
+            }
+        }
+        catch (e) {
+            console.error("Museck: Track watcher error:", e);
+        }
+    };
+    // Check immediately and then every 2 seconds
+    await checkTrack();
+    watcherInterval = setInterval(checkTrack, 2000);
+}
+function stopTrackWatcher() {
+    if (watcherInterval) {
+        clearInterval(watcherInterval);
+        watcherInterval = null;
+    }
+    lastTrackKey = null;
+    console.log("Museck: Track watcher stopped");
+}
 var index = DFL.definePlugin(() => {
     console.log("Museck plugin loaded!");
     // Register the full-screen routes
@@ -629,6 +670,8 @@ var index = DFL.definePlugin(() => {
     routerHook.addRoute("/museck-queue", () => SP_JSX.jsx(QueuePage, {}), {
         exact: true,
     });
+    // Start the track watcher for toast notifications
+    startTrackWatcher();
     return {
         name: "Museck",
         titleView: SP_JSX.jsx("div", { className: DFL.staticClasses.Title, children: "Museck" }),
@@ -640,6 +683,8 @@ var index = DFL.definePlugin(() => {
             routerHook.removeRoute("/museck-settings");
             routerHook.removeRoute("/museck-search");
             routerHook.removeRoute("/museck-queue");
+            // Stop the track watcher
+            stopTrackWatcher();
         },
     };
 });
