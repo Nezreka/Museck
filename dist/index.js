@@ -134,6 +134,39 @@ function formatTime(seconds) {
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
+// ============================================
+// Material Design 3 / Liquid Design System
+// ============================================
+const theme = {
+    // Surfaces - tonal dark palette
+    surface: "#16161e",
+    surfaceContainer: "#1e1e2a",
+    surfaceContainerHigh: "#262636",
+    surfaceContainerHighest: "#2e2e42",
+    // Primary accent
+    primary: "#1ed760",
+    primaryContainer: "#1a3d2a",
+    onPrimary: "#000000",
+    // Secondary
+    secondary: "#b4b4c4",
+    secondaryContainer: "#3d3d52",
+    // Text
+    onSurface: "#e8e8ee",
+    onSurfaceVariant: "#9898a8",
+    outline: "#48485a",
+    // States
+    error: "#ff6b6b",
+    errorContainer: "#4a2020",
+    success: "#4ade80",
+    successContainer: "#1a4a2a",
+    // Radii - MD3 larger corners
+    radiusSm: "12px",
+    radiusMd: "16px",
+    radiusLg: "20px",
+    radiusXl: "28px",
+    radiusFull: "9999px",
+    // Transitions
+    transition: "all 0.2s cubic-bezier(0.2, 0, 0, 1)"};
 // Now Playing Component
 function NowPlaying() {
     const [status, setStatus] = SP_REACT.useState(null);
@@ -198,125 +231,265 @@ function NowPlaying() {
     const shuffleOn = status?.shuffle || false;
     const loopMode = status?.loop || "off";
     const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
-    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: track ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", gap: "12px", alignItems: "center" }, children: [SP_JSX.jsxs("div", { style: {
-                                            width: "56px",
-                                            height: "56px",
-                                            borderRadius: "4px",
-                                            backgroundColor: "#333",
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: track ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                    background: `linear-gradient(135deg, ${theme.surfaceContainerHigh} 0%, ${theme.surfaceContainer} 100%)`,
+                                    borderRadius: theme.radiusLg,
+                                    padding: "16px",
+                                    display: "flex",
+                                    gap: "16px",
+                                    alignItems: "center",
+                                    boxShadow: `0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                                    transition: theme.transition,
+                                }, children: [SP_JSX.jsxs("div", { style: {
+                                            width: "72px",
+                                            height: "72px",
+                                            borderRadius: theme.radiusMd,
+                                            backgroundColor: theme.surfaceContainerHighest,
                                             display: "flex",
                                             alignItems: "center",
                                             justifyContent: "center",
                                             flexShrink: 0,
                                             overflow: "hidden",
-                                            position: "relative"
-                                        }, children: [SP_JSX.jsx(FaMusic, { style: { fontSize: "24px", color: "#666", position: "absolute" } }), (track.thumb || track.parentThumb) && (SP_JSX.jsx("img", { src: track.thumb || track.parentThumb, style: { width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1 }, onError: (e) => { e.target.style.display = 'none'; } }))] }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsx("div", { style: { fontSize: "12px", color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.artist })] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { width: "100%" }, children: SP_JSX.jsxs("div", { style: {
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                        fontSize: "11px",
-                                        color: "#888"
-                                    }, children: [SP_JSX.jsx("span", { style: { width: "35px", textAlign: "right" }, children: formatTime(position) }), SP_JSX.jsx("div", { style: {
-                                                flex: 1,
-                                                height: "4px",
-                                                backgroundColor: "#333",
-                                                borderRadius: "2px",
-                                                overflow: "hidden"
-                                            }, children: SP_JSX.jsx("div", { style: {
-                                                    width: `${progressPercent}%`,
+                                            position: "relative",
+                                            boxShadow: `0 8px 32px rgba(30, 215, 96, 0.15)`,
+                                        }, children: [SP_JSX.jsx(FaMusic, { style: { fontSize: "28px", color: theme.outline, position: "absolute" } }), (track.thumb || track.parentThumb) && (SP_JSX.jsx("img", { src: track.thumb || track.parentThumb, style: {
+                                                    width: "100%",
                                                     height: "100%",
-                                                    backgroundColor: "#1db954",
-                                                    borderRadius: "2px",
-                                                    transition: "width 0.3s ease"
-                                                } }) }), SP_JSX.jsx("span", { style: { width: "35px" }, children: formatTime(duration) })] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "center", gap: "8px", width: "100%" }, children: [SP_JSX.jsx("button", { onClick: handlePrevious, style: {
-                                            background: "#1a1a1a",
-                                            border: "none",
-                                            borderRadius: "50%",
-                                            width: "44px",
-                                            height: "44px",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            cursor: "pointer",
-                                            color: "white"
-                                        }, children: SP_JSX.jsx(FaStepBackward, { style: { fontSize: "18px" } }) }), SP_JSX.jsx("button", { onClick: handlePlayPause, style: {
-                                            background: "#1db954",
-                                            border: "none",
-                                            borderRadius: "50%",
-                                            width: "52px",
-                                            height: "52px",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            cursor: "pointer",
-                                            color: "white"
-                                        }, children: isPlaying ? SP_JSX.jsx(FaPause, { style: { fontSize: "22px" } }) : SP_JSX.jsx(FaPlay, { style: { fontSize: "22px", marginLeft: "3px" } }) }), SP_JSX.jsx("button", { onClick: handleNext, style: {
-                                            background: "#1a1a1a",
-                                            border: "none",
-                                            borderRadius: "50%",
-                                            width: "44px",
-                                            height: "44px",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            cursor: "pointer",
-                                            color: "white"
-                                        }, children: SP_JSX.jsx(FaStepForward, { style: { fontSize: "18px" } }) })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "center", gap: "16px", width: "100%" }, children: [SP_JSX.jsxs("button", { onClick: handleShuffle, style: {
-                                            background: "transparent",
-                                            border: "none",
-                                            padding: "8px 12px",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            cursor: "pointer",
-                                            color: shuffleOn ? "#1db954" : "#888",
-                                            fontSize: "12px"
-                                        }, children: [SP_JSX.jsx(FaRandom, { style: { fontSize: "14px" } }), "Shuffle"] }), SP_JSX.jsxs("button", { onClick: handleLoop, style: {
-                                            background: "transparent",
-                                            border: "none",
-                                            padding: "8px 12px",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            cursor: "pointer",
-                                            color: loopMode !== "off" ? "#1db954" : "#888",
-                                            fontSize: "12px"
-                                        }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "14px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "Loop All" : "Loop One"] })] }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            alignItems: "center",
-                                            padding: "8px 0"
-                                        }, children: [SP_JSX.jsx("span", { style: { fontSize: "12px", color: "#888" }, children: "Up Next" }), SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("span", { style: { fontSize: "11px" }, children: ["View Queue (", status.queue.length, ")"] }) })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
-                                            maxHeight: "150px",
-                                            overflowY: "auto",
-                                            borderRadius: "8px",
-                                            backgroundColor: "#1a1a1a"
-                                        }, children: status.queue.slice(status.queue_index + 1, status.queue_index + 6).map((qTrack, idx) => (SP_JSX.jsxs("div", { style: {
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "10px",
-                                                padding: "8px 10px",
-                                                borderBottom: idx < 4 ? "1px solid #2a2a2a" : "none"
-                                            }, children: [SP_JSX.jsx("span", { style: { fontSize: "11px", color: "#666", width: "16px" }, children: status.queue_index + idx + 2 }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: {
-                                                                fontSize: "12px",
-                                                                overflow: "hidden",
-                                                                textOverflow: "ellipsis",
-                                                                whiteSpace: "nowrap"
-                                                            }, children: qTrack.title }), SP_JSX.jsx("div", { style: { fontSize: "10px", color: "#888" }, children: qTrack.artist })] })] }, `${qTrack.ratingKey}-${idx}`))) }) })] }))] })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "16px", color: "#888" }, children: "Select a playlist to start playing" }) })) }), SP_JSX.jsx(DFL.PanelSection, { title: "Search", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-search"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaSearch, {}), "Search Music"] }) }) }) }), SP_JSX.jsx(DFL.PanelSection, { title: "Playlists", children: loading ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", color: "#888" }, children: "Loading..." }) })) : playlists.length > 0 ? (SP_JSX.jsx(SP_JSX.Fragment, { children: playlists.map((pl) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayPlaylist(pl), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px", width: "230px" }, children: [SP_JSX.jsx("div", { style: {
-                                            width: "36px",
-                                            height: "36px",
-                                            borderRadius: "4px",
-                                            backgroundColor: "#1a1a1a",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            flexShrink: 0
-                                        }, children: SP_JSX.jsx(FaList, { style: { fontSize: "16px", color: "#1db954" } }) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: {
-                                                    fontSize: "13px",
-                                                    fontWeight: "500",
+                                                    objectFit: "cover",
+                                                    position: "relative",
+                                                    zIndex: 1,
+                                                    transition: theme.transition,
+                                                }, onError: (e) => { e.target.style.display = 'none'; } }))] }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: {
+                                                    fontWeight: "600",
+                                                    fontSize: "15px",
+                                                    color: theme.onSurface,
                                                     overflow: "hidden",
                                                     textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap"
-                                                }, children: pl.title }), SP_JSX.jsxs("div", { style: { fontSize: "11px", color: "#888" }, children: [pl.count, " tracks"] })] }), SP_JSX.jsx(FaPlay, { style: { fontSize: "12px", color: "#1db954", flexShrink: 0 } })] }) }) }, pl.key))) })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", color: "#888", fontSize: "12px" }, children: "No playlists found" }) })) })] }));
+                                                    whiteSpace: "nowrap",
+                                                    marginBottom: "4px",
+                                                    letterSpacing: "-0.2px",
+                                                }, children: track.title }), SP_JSX.jsx("div", { style: {
+                                                    fontSize: "13px",
+                                                    color: theme.onSurfaceVariant,
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                }, children: track.artist }), SP_JSX.jsx("div", { style: {
+                                                    fontSize: "11px",
+                                                    color: theme.outline,
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                    marginTop: "2px",
+                                                }, children: track.album })] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { width: "100%", padding: "4px 0" }, children: SP_JSX.jsxs("div", { style: {
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "12px",
+                                        fontSize: "11px",
+                                        color: theme.onSurfaceVariant,
+                                        fontWeight: "500",
+                                        fontVariantNumeric: "tabular-nums",
+                                    }, children: [SP_JSX.jsx("span", { style: { width: "36px", textAlign: "right" }, children: formatTime(position) }), SP_JSX.jsx("div", { style: {
+                                                flex: 1,
+                                                height: "6px",
+                                                backgroundColor: theme.surfaceContainerHighest,
+                                                borderRadius: theme.radiusFull,
+                                                overflow: "hidden",
+                                                position: "relative",
+                                            }, children: SP_JSX.jsx("div", { style: {
+                                                    position: "absolute",
+                                                    width: `${progressPercent}%`,
+                                                    height: "100%",
+                                                    background: `linear-gradient(90deg, ${theme.primary}88 0%, ${theme.primary} 100%)`,
+                                                    borderRadius: theme.radiusFull,
+                                                    transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+                                                    boxShadow: `0 0 12px ${theme.primary}66`,
+                                                } }) }), SP_JSX.jsx("span", { style: { width: "36px" }, children: formatTime(duration) })] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    justifyContent: "center",
+                                    alignItems: "center",
+                                    gap: "12px",
+                                    width: "100%",
+                                    padding: "8px 0",
+                                }, children: [SP_JSX.jsx("button", { onClick: handlePrevious, style: {
+                                            background: theme.surfaceContainerHigh,
+                                            border: "none",
+                                            borderRadius: theme.radiusFull,
+                                            width: "48px",
+                                            height: "48px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: theme.onSurface,
+                                            transition: theme.transition,
+                                            boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
+                                        }, children: SP_JSX.jsx(FaStepBackward, { style: { fontSize: "16px" } }) }), SP_JSX.jsx("button", { onClick: handlePlayPause, style: {
+                                            background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
+                                            border: "none",
+                                            borderRadius: theme.radiusFull,
+                                            width: "64px",
+                                            height: "64px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: theme.onPrimary,
+                                            transition: theme.transition,
+                                            boxShadow: `0 4px 20px ${theme.primary}55, 0 2px 8px rgba(0,0,0,0.3)`,
+                                        }, children: isPlaying ? (SP_JSX.jsx(FaPause, { style: { fontSize: "24px" } })) : (SP_JSX.jsx(FaPlay, { style: { fontSize: "24px", marginLeft: "4px" } })) }), SP_JSX.jsx("button", { onClick: handleNext, style: {
+                                            background: theme.surfaceContainerHigh,
+                                            border: "none",
+                                            borderRadius: theme.radiusFull,
+                                            width: "48px",
+                                            height: "48px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            color: theme.onSurface,
+                                            transition: theme.transition,
+                                            boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
+                                        }, children: SP_JSX.jsx(FaStepForward, { style: { fontSize: "16px" } }) })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    justifyContent: "center",
+                                    gap: "8px",
+                                    width: "100%",
+                                }, children: [SP_JSX.jsxs("button", { onClick: handleShuffle, style: {
+                                            background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
+                                            border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
+                                            borderRadius: theme.radiusXl,
+                                            padding: "8px 16px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "8px",
+                                            cursor: "pointer",
+                                            color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
+                                            fontSize: "12px",
+                                            fontWeight: "500",
+                                            transition: theme.transition,
+                                        }, children: [SP_JSX.jsx(FaRandom, { style: { fontSize: "12px" } }), "Shuffle"] }), SP_JSX.jsxs("button", { onClick: handleLoop, style: {
+                                            background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
+                                            border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
+                                            borderRadius: theme.radiusXl,
+                                            padding: "8px 16px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "8px",
+                                            cursor: "pointer",
+                                            color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
+                                            fontSize: "12px",
+                                            fontWeight: "500",
+                                            transition: theme.transition,
+                                        }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "12px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"] })] }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("div", { style: {
+                                                display: "flex",
+                                                justifyContent: "space-between",
+                                                alignItems: "center",
+                                                width: "100%",
+                                            }, children: [SP_JSX.jsx("span", { style: {
+                                                        fontSize: "13px",
+                                                        color: theme.onSurfaceVariant,
+                                                        fontWeight: "600",
+                                                    }, children: "Up Next" }), SP_JSX.jsxs("span", { style: {
+                                                        fontSize: "11px",
+                                                        fontWeight: "500",
+                                                        color: theme.primary,
+                                                    }, children: ["View All (", status.queue.length, ")"] })] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                                            maxHeight: "160px",
+                                            overflowY: "auto",
+                                            borderRadius: theme.radiusMd,
+                                            background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
+                                            border: `1px solid ${theme.outline}22`,
+                                        }, children: status.queue.slice(status.queue_index + 1, status.queue_index + 5).map((qTrack, idx) => (SP_JSX.jsxs("div", { style: {
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                padding: "10px 14px",
+                                                borderBottom: idx < 3 ? `1px solid ${theme.outline}22` : "none",
+                                                transition: theme.transition,
+                                            }, children: [SP_JSX.jsx("span", { style: {
+                                                        fontSize: "11px",
+                                                        color: theme.outline,
+                                                        width: "18px",
+                                                        fontWeight: "600",
+                                                        fontVariantNumeric: "tabular-nums",
+                                                    }, children: status.queue_index + idx + 2 }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: {
+                                                                fontSize: "13px",
+                                                                fontWeight: "500",
+                                                                color: theme.onSurface,
+                                                                overflow: "hidden",
+                                                                textOverflow: "ellipsis",
+                                                                whiteSpace: "nowrap",
+                                                            }, children: qTrack.title }), SP_JSX.jsx("div", { style: {
+                                                                fontSize: "11px",
+                                                                color: theme.onSurfaceVariant,
+                                                            }, children: qTrack.artist })] })] }, `${qTrack.ratingKey}-${idx}`))) }) })] }))] })) : (
+                /* Empty State - Elegant */
+                SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                            textAlign: "center",
+                            padding: "32px 16px",
+                            background: `linear-gradient(135deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
+                            borderRadius: theme.radiusLg,
+                            border: `1px solid ${theme.outline}22`,
+                        }, children: [SP_JSX.jsx(FaMusic, { style: {
+                                    fontSize: "36px",
+                                    color: theme.outline,
+                                    marginBottom: "12px",
+                                    opacity: 0.5,
+                                } }), SP_JSX.jsx("div", { style: {
+                                    color: theme.onSurfaceVariant,
+                                    fontSize: "14px",
+                                    fontWeight: "500",
+                                }, children: "Select a playlist to start" })] }) })) }), SP_JSX.jsx(DFL.PanelSection, { title: "Search", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-search"), children: SP_JSX.jsxs("div", { style: {
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "10px",
+                                color: theme.onSurface,
+                            }, children: [SP_JSX.jsx(FaSearch, { style: { color: theme.primary } }), "Search Music"] }) }) }) }), SP_JSX.jsx(DFL.PanelSection, { title: "Playlists", children: loading ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                            textAlign: "center",
+                            color: theme.onSurfaceVariant,
+                            padding: "24px",
+                        }, children: "Loading..." }) })) : playlists.length > 0 ? (SP_JSX.jsx(SP_JSX.Fragment, { children: playlists.map((pl) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayPlaylist(pl), children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "12px",
+                                    width: "100%",
+                                    maxWidth: "100%",
+                                }, children: [SP_JSX.jsx("div", { style: {
+                                            width: "40px",
+                                            height: "40px",
+                                            borderRadius: theme.radiusSm,
+                                            background: theme.primaryContainer,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            flexShrink: 0,
+                                        }, children: SP_JSX.jsx(FaList, { style: { fontSize: "16px", color: theme.primary } }) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" }, children: [SP_JSX.jsx("div", { style: {
+                                                    fontSize: "13px",
+                                                    fontWeight: "500",
+                                                    color: theme.onSurface,
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                }, children: pl.title }), SP_JSX.jsxs("div", { style: {
+                                                    fontSize: "11px",
+                                                    color: theme.onSurfaceVariant,
+                                                }, children: [pl.count, " tracks"] })] }), SP_JSX.jsx("div", { style: {
+                                            width: "28px",
+                                            height: "28px",
+                                            borderRadius: theme.radiusFull,
+                                            background: theme.primaryContainer,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            flexShrink: 0,
+                                        }, children: SP_JSX.jsx(FaPlay, { style: { fontSize: "10px", color: theme.primary, marginLeft: "2px" } }) })] }) }) }, pl.key))) })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                            textAlign: "center",
+                            color: theme.onSurfaceVariant,
+                            fontSize: "13px",
+                            padding: "20px",
+                        }, children: "No playlists found" }) })) })] }));
 }
 // Full-screen Settings Page (keyboard works properly here)
 function SettingsPage() {
@@ -342,27 +515,87 @@ function SettingsPage() {
         }
     };
     return (SP_JSX.jsxs("div", { style: {
-            padding: "20px",
+            padding: "24px",
             maxWidth: "600px",
-            margin: "0 auto",
-            color: "white"
-        }, children: [SP_JSX.jsx("h2", { style: { marginBottom: "20px" }, children: "Museck Settings" }), SP_JSX.jsxs("div", { style: { marginBottom: "20px" }, children: [SP_JSX.jsx("label", { style: { display: "block", marginBottom: "8px" }, children: "Server URL" }), SP_JSX.jsx(DFL.TextField, { value: serverUrl, onChange: (e) => setServerUrl(e.target.value), style: { width: "100%" } })] }), SP_JSX.jsxs("div", { style: { marginBottom: "20px" }, children: [SP_JSX.jsx("label", { style: { display: "block", marginBottom: "8px" }, children: "Plex Token" }), SP_JSX.jsx(DFL.TextField, { value: token, onChange: (e) => setToken(e.target.value), bIsPassword: true, style: { width: "100%" } })] }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "10px" }, children: [SP_JSX.jsx("button", { onClick: handleSave, disabled: isSaving, style: {
-                            padding: "10px 20px",
-                            backgroundColor: "#1a9fff",
+            margin: "40px auto 0",
+            color: theme.onSurface,
+        }, children: [SP_JSX.jsxs("div", { style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "16px",
+                    marginBottom: "32px",
+                }, children: [SP_JSX.jsx("div", { style: {
+                            width: "48px",
+                            height: "48px",
+                            borderRadius: theme.radiusMd,
+                            background: `linear-gradient(135deg, ${theme.primaryContainer} 0%, ${theme.surfaceContainerHighest} 100%)`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                        }, children: SP_JSX.jsx(FaCog, { style: { fontSize: "22px", color: theme.primary } }) }), SP_JSX.jsx("h2", { style: {
+                            margin: 0,
+                            fontSize: "24px",
+                            fontWeight: "600",
+                            letterSpacing: "-0.5px",
+                        }, children: "Settings" })] }), SP_JSX.jsxs("div", { style: {
+                    background: theme.surfaceContainer,
+                    borderRadius: theme.radiusMd,
+                    padding: "20px",
+                    marginBottom: "16px",
+                    border: `1px solid ${theme.outline}22`,
+                }, children: [SP_JSX.jsx("label", { style: {
+                            display: "block",
+                            marginBottom: "10px",
+                            fontSize: "13px",
+                            fontWeight: "600",
+                            color: theme.onSurfaceVariant,
+                            letterSpacing: "0.5px",
+                        }, children: "Server URL" }), SP_JSX.jsx(DFL.TextField, { value: serverUrl, onChange: (e) => setServerUrl(e.target.value), style: { width: "100%" } })] }), SP_JSX.jsxs("div", { style: {
+                    background: theme.surfaceContainer,
+                    borderRadius: theme.radiusMd,
+                    padding: "20px",
+                    marginBottom: "24px",
+                    border: `1px solid ${theme.outline}22`,
+                }, children: [SP_JSX.jsx("label", { style: {
+                            display: "block",
+                            marginBottom: "10px",
+                            fontSize: "13px",
+                            fontWeight: "600",
+                            color: theme.onSurfaceVariant,
+                            letterSpacing: "0.5px",
+                        }, children: "Plex Token" }), SP_JSX.jsx(DFL.TextField, { value: token, onChange: (e) => setToken(e.target.value), bIsPassword: true, style: { width: "100%" } })] }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "12px" }, children: [SP_JSX.jsx("button", { onClick: handleSave, disabled: isSaving, style: {
+                            flex: 1,
+                            padding: "14px 24px",
+                            background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
                             border: "none",
-                            borderRadius: "4px",
-                            color: "white",
-                            cursor: "pointer"
+                            borderRadius: theme.radiusXl,
+                            color: theme.onPrimary,
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                            transition: theme.transition,
+                            boxShadow: `0 4px 16px ${theme.primary}44`,
                         }, children: isSaving ? "Saving..." : "Save & Return" }), SP_JSX.jsx("button", { onClick: () => DFL.Navigation.NavigateBack(), style: {
-                            padding: "10px 20px",
-                            backgroundColor: "#444",
-                            border: "none",
-                            borderRadius: "4px",
-                            color: "white",
-                            cursor: "pointer"
-                        }, children: "Cancel" })] }), status && (SP_JSX.jsx("div", { style: { marginTop: "15px", color: status === "Saved!" ? "#4ade80" : "#f87171" }, children: status }))] }));
+                            padding: "14px 24px",
+                            background: theme.surfaceContainerHigh,
+                            border: `1px solid ${theme.outline}33`,
+                            borderRadius: theme.radiusXl,
+                            color: theme.onSurface,
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            cursor: "pointer",
+                            transition: theme.transition,
+                        }, children: "Cancel" })] }), status && (SP_JSX.jsx("div", { style: {
+                    marginTop: "20px",
+                    padding: "14px 20px",
+                    borderRadius: theme.radiusMd,
+                    background: status === "Saved!" ? theme.successContainer : theme.errorContainer,
+                    color: status === "Saved!" ? theme.success : theme.error,
+                    textAlign: "center",
+                    fontWeight: "500",
+                }, children: status }))] }));
 }
-// Full-screen Search Page - Uses PanelSection for proper Steam UI integration
+// Full-screen Search Page - MD3 Design
 function SearchPage() {
     const [query, setQuery] = SP_REACT.useState("");
     const [tracks, setTracks] = SP_REACT.useState([]);
@@ -412,45 +645,157 @@ function SearchPage() {
             DFL.Navigation.NavigateBack();
         }
     };
+    // Shared card style for results - with width constraints
+    const resultCardStyle = {
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        width: "100%",
+        maxWidth: "100%",
+        overflow: "hidden",
+    };
     return (SP_JSX.jsxs("div", { style: {
             marginTop: "40px",
             height: "calc(100% - 40px)",
             overflowY: "auto",
             overflowX: "hidden",
-            paddingBottom: "60px"
-        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Search Music", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { value: query, onChange: (e) => setQuery(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSearch, disabled: loading || !query.trim(), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaSearch, { style: { color: query.trim() ? "#1db954" : "#888" } }), loading ? "Searching..." : "Search"] }) }) })] }), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: "Searching..." }) }) })), !loading && searched && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [artists.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Artists", children: artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayArtist(artist), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [SP_JSX.jsx("div", { style: {
-                                                width: "40px",
-                                                height: "40px",
-                                                borderRadius: "50%",
-                                                backgroundColor: "#1db954",
+            paddingBottom: "60px",
+        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Search Music", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { value: query, onChange: (e) => setQuery(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSearch, disabled: loading || !query.trim(), children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "10px",
+                                    color: query.trim() ? theme.primary : theme.onSurfaceVariant,
+                                    fontWeight: "600",
+                                }, children: [SP_JSX.jsx(FaSearch, { style: { fontSize: "14px" } }), loading ? "Searching..." : "Search"] }) }) })] }), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                            textAlign: "center",
+                            padding: "32px",
+                            color: theme.onSurfaceVariant,
+                        }, children: [SP_JSX.jsx("div", { style: {
+                                    width: "40px",
+                                    height: "40px",
+                                    margin: "0 auto 16px",
+                                    borderRadius: theme.radiusFull,
+                                    border: `3px solid ${theme.surfaceContainerHighest}`,
+                                    borderTopColor: theme.primary,
+                                    animation: "spin 1s linear infinite",
+                                } }), "Searching..."] }) }) })), !loading && searched && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [artists.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Artists", children: artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayArtist(artist), children: SP_JSX.jsxs("div", { style: resultCardStyle, children: [SP_JSX.jsx("div", { style: {
+                                                width: "48px",
+                                                height: "48px",
+                                                borderRadius: theme.radiusFull,
+                                                background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryContainer} 100%)`,
                                                 overflow: "hidden",
                                                 flexShrink: 0,
                                                 display: "flex",
                                                 alignItems: "center",
-                                                justifyContent: "center"
-                                            }, children: artist.thumb ? (SP_JSX.jsx("img", { src: artist.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white", fontSize: "16px" } })) }), SP_JSX.jsx("div", { style: { flex: 1, textAlign: "left" }, children: artist.title }), SP_JSX.jsx("div", { style: { color: "#1db954", fontSize: "10px" }, children: "ARTIST" })] }) }) }, artist.key))) })), albums.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Albums", children: albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayAlbum(album), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [SP_JSX.jsx("div", { style: {
-                                                width: "40px",
-                                                height: "40px",
-                                                borderRadius: "4px",
-                                                backgroundColor: "#333",
+                                                justifyContent: "center",
+                                                boxShadow: `0 4px 12px ${theme.primary}33`,
+                                            }, children: artist.thumb ? (SP_JSX.jsx("img", { src: artist.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white", fontSize: "18px" } })) }), SP_JSX.jsx("div", { style: { flex: 1, textAlign: "left" }, children: SP_JSX.jsx("div", { style: {
+                                                    fontSize: "14px",
+                                                    fontWeight: "500",
+                                                    color: theme.onSurface,
+                                                }, children: artist.title }) }), SP_JSX.jsx("span", { style: {
+                                                fontSize: "10px",
+                                                fontWeight: "600",
+                                                color: theme.primary,
+                                                background: theme.primaryContainer,
+                                                padding: "4px 10px",
+                                                borderRadius: theme.radiusFull,
+                                                letterSpacing: "0.5px",
+                                            }, children: "ARTIST" })] }) }) }, artist.key))) })), albums.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Albums", children: albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayAlbum(album), children: SP_JSX.jsxs("div", { style: resultCardStyle, children: [SP_JSX.jsx("div", { style: {
+                                                width: "48px",
+                                                height: "48px",
+                                                borderRadius: theme.radiusSm,
+                                                backgroundColor: theme.surfaceContainerHighest,
                                                 overflow: "hidden",
                                                 flexShrink: 0,
                                                 display: "flex",
                                                 alignItems: "center",
-                                                justifyContent: "center"
-                                            }, children: album.thumb ? (SP_JSX.jsx("img", { src: album.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: album.title }), SP_JSX.jsxs("div", { style: { fontSize: "11px", color: "#888" }, children: [album.artist, " ", album.year && `• ${album.year}`] })] }), SP_JSX.jsx("div", { style: { color: "#1db954", fontSize: "10px" }, children: "ALBUM" })] }) }) }, album.key))) })), tracks.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Tracks", children: tracks.map((track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayTrack(track, tracks), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [SP_JSX.jsx("div", { style: {
-                                                width: "40px",
-                                                height: "40px",
-                                                borderRadius: "4px",
-                                                backgroundColor: "#333",
+                                                justifyContent: "center",
+                                                boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
+                                            }, children: album.thumb ? (SP_JSX.jsx("img", { src: album.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: theme.outline } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: {
+                                                        fontSize: "14px",
+                                                        fontWeight: "500",
+                                                        color: theme.onSurface,
+                                                        overflow: "hidden",
+                                                        textOverflow: "ellipsis",
+                                                        whiteSpace: "nowrap",
+                                                    }, children: album.title }), SP_JSX.jsxs("div", { style: {
+                                                        fontSize: "12px",
+                                                        color: theme.onSurfaceVariant,
+                                                        marginTop: "2px",
+                                                    }, children: [album.artist, " ", album.year && `• ${album.year}`] })] }), SP_JSX.jsx("span", { style: {
+                                                fontSize: "10px",
+                                                fontWeight: "600",
+                                                color: theme.secondary,
+                                                background: theme.secondaryContainer,
+                                                padding: "4px 10px",
+                                                borderRadius: theme.radiusFull,
+                                                letterSpacing: "0.5px",
+                                            }, children: "ALBUM" })] }) }) }, album.key))) })), tracks.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { title: "Tracks", children: tracks.map((track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayTrack(track, tracks), children: SP_JSX.jsxs("div", { style: resultCardStyle, children: [SP_JSX.jsx("div", { style: {
+                                                width: "48px",
+                                                height: "48px",
+                                                borderRadius: theme.radiusSm,
+                                                backgroundColor: theme.surfaceContainerHighest,
                                                 overflow: "hidden",
                                                 flexShrink: 0,
                                                 display: "flex",
                                                 alignItems: "center",
-                                                justifyContent: "center"
-                                            }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsxs("div", { style: { fontSize: "11px", color: "#888" }, children: [track.artist, " \u2022 ", track.album] })] }), SP_JSX.jsx("div", { style: { color: "#888", fontSize: "10px" }, children: "TRACK" })] }) }) }, track.ratingKey))) })), artists.length === 0 && albums.length === 0 && tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: ["No results found for \"", query, "\""] }) }) })), SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { height: "60px" } }) }) })] })), !loading && !searched && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaSearch, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Enter a search term above" })] }) }) })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
+                                                justifyContent: "center",
+                                            }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: theme.outline } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: {
+                                                        fontSize: "14px",
+                                                        fontWeight: "500",
+                                                        color: theme.onSurface,
+                                                        overflow: "hidden",
+                                                        textOverflow: "ellipsis",
+                                                        whiteSpace: "nowrap",
+                                                    }, children: track.title }), SP_JSX.jsx("div", { style: {
+                                                        fontSize: "12px",
+                                                        color: theme.onSurfaceVariant,
+                                                        marginTop: "2px",
+                                                    }, children: track.artist })] }), SP_JSX.jsx("span", { style: {
+                                                fontSize: "10px",
+                                                fontWeight: "600",
+                                                color: theme.outline,
+                                                background: theme.surfaceContainerHigh,
+                                                padding: "4px 10px",
+                                                borderRadius: theme.radiusFull,
+                                                letterSpacing: "0.5px",
+                                            }, children: "TRACK" })] }) }) }, track.ratingKey))) })), artists.length === 0 && albums.length === 0 && tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                    textAlign: "center",
+                                    padding: "40px 20px",
+                                    background: theme.surfaceContainer,
+                                    borderRadius: theme.radiusLg,
+                                    border: `1px solid ${theme.outline}22`,
+                                }, children: [SP_JSX.jsx(FaSearch, { style: {
+                                            fontSize: "36px",
+                                            color: theme.outline,
+                                            marginBottom: "16px",
+                                            opacity: 0.4,
+                                        } }), SP_JSX.jsxs("div", { style: {
+                                            color: theme.onSurfaceVariant,
+                                            fontSize: "14px",
+                                        }, children: ["No results found for \"", query, "\""] })] }) }) })), SP_JSX.jsx("div", { style: { height: "60px" } })] })), !loading && !searched && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                            textAlign: "center",
+                            padding: "48px 20px",
+                            background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
+                            borderRadius: theme.radiusLg,
+                        }, children: [SP_JSX.jsx(FaSearch, { style: {
+                                    fontSize: "48px",
+                                    color: theme.outline,
+                                    marginBottom: "16px",
+                                    opacity: 0.25,
+                                } }), SP_JSX.jsx("div", { style: {
+                                    color: theme.onSurfaceVariant,
+                                    fontSize: "15px",
+                                    fontWeight: "500",
+                                }, children: "Search for music" }), SP_JSX.jsx("div", { style: {
+                                    color: theme.outline,
+                                    fontSize: "13px",
+                                    marginTop: "6px",
+                                }, children: "Find artists, albums, and tracks" })] }) }) })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
 }
-// Full-screen Queue Page - Fetches queue with images
+// Full-screen Queue Page - MD3 Design
 function QueuePage() {
     const [currentTrack, setCurrentTrack] = SP_REACT.useState(null);
     const [currentIndex, setCurrentIndex] = SP_REACT.useState(-1);
@@ -460,12 +805,10 @@ function QueuePage() {
     SP_REACT.useEffect(() => {
         const fetchQueue = async () => {
             try {
-                // Get current status
                 const s = await getPlaybackStatus();
                 setCurrentTrack(s.current_track);
                 setCurrentIndex(s.queue_index);
                 setTotalTracks(s.queue?.length || 0);
-                // Fetch up next tracks with images
                 if (s.queue_index >= 0 && s.queue && s.queue.length > s.queue_index + 1) {
                     const result = await getQueueWithImages(s.queue_index + 1, 30);
                     if (result.success) {
@@ -480,7 +823,6 @@ function QueuePage() {
             }
         };
         fetchQueue();
-        // Only refresh every 5 seconds since fetching images is slower
         const interval = setInterval(fetchQueue, 5000);
         return () => clearInterval(interval);
     }, []);
@@ -493,40 +835,119 @@ function QueuePage() {
             height: "calc(100% - 40px)",
             overflowY: "auto",
             overflowX: "hidden",
-            paddingBottom: "60px"
-        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { fontSize: "12px", color: "#888" }, children: [totalTracks, " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "20px", color: "#888" }, children: "Loading..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+            paddingBottom: "60px",
+        }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                fontSize: "13px",
+                                color: theme.onSurfaceVariant,
+                            }, children: [SP_JSX.jsx(FaList, { style: { color: theme.primary } }), SP_JSX.jsx("span", { style: { fontWeight: "500" }, children: totalTracks }), " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                            textAlign: "center",
+                            padding: "32px",
+                            color: theme.onSurfaceVariant,
+                        }, children: "Loading queue..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: "10px",
-                                    padding: "8px",
-                                    backgroundColor: "#1db954",
-                                    borderRadius: "8px"
+                                    gap: "14px",
+                                    padding: "14px 16px",
+                                    background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
+                                    borderRadius: theme.radiusMd,
+                                    boxShadow: `0 4px 20px ${theme.primary}44`,
                                 }, children: [SP_JSX.jsx("div", { style: {
-                                            width: "40px",
-                                            height: "40px",
-                                            borderRadius: "4px",
+                                            width: "52px",
+                                            height: "52px",
+                                            borderRadius: theme.radiusSm,
                                             backgroundColor: "rgba(0,0,0,0.2)",
                                             overflow: "hidden",
                                             flexShrink: 0,
                                             display: "flex",
                                             alignItems: "center",
-                                            justifyContent: "center"
-                                        }, children: currentTrack.thumb ? (SP_JSX.jsx("img", { src: currentTrack.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: currentTrack.title }), SP_JSX.jsx("div", { style: { fontSize: "11px", opacity: 0.9 }, children: currentTrack.artist })] })] }) }) })), upNextTracks.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: `Up Next (${totalTracks - currentIndex - 1})`, children: [upNextTracks.map((track, idx) => {
+                                            justifyContent: "center",
+                                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                                        }, children: currentTrack.thumb ? (SP_JSX.jsx("img", { src: currentTrack.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "white", fontSize: "20px" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: {
+                                                    fontWeight: "600",
+                                                    fontSize: "15px",
+                                                    color: theme.onPrimary,
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                }, children: currentTrack.title }), SP_JSX.jsx("div", { style: {
+                                                    fontSize: "13px",
+                                                    color: "rgba(0,0,0,0.7)",
+                                                    marginTop: "2px",
+                                                }, children: currentTrack.artist })] }), SP_JSX.jsx("div", { style: {
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "3px",
+                                        }, children: [1, 2, 3].map((i) => (SP_JSX.jsx("div", { style: {
+                                                width: "3px",
+                                                height: `${8 + i * 4}px`,
+                                                backgroundColor: theme.onPrimary,
+                                                borderRadius: "2px",
+                                                opacity: 0.8,
+                                            } }, i))) })] }) }) })), upNextTracks.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: `Up Next (${totalTracks - currentIndex - 1})`, children: [upNextTracks.map((track, idx) => {
                                 const actualIndex = currentIndex + 1 + idx;
-                                return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayIndex(actualIndex), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [SP_JSX.jsx("span", { style: { fontSize: "11px", color: "#666", width: "20px" }, children: actualIndex + 1 }), SP_JSX.jsx("div", { style: {
-                                                        width: "32px",
-                                                        height: "32px",
-                                                        borderRadius: "4px",
-                                                        backgroundColor: "#333",
+                                return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handlePlayIndex(actualIndex), children: SP_JSX.jsxs("div", { style: {
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                padding: "2px 0",
+                                            }, children: [SP_JSX.jsx("span", { style: {
+                                                        fontSize: "12px",
+                                                        color: theme.outline,
+                                                        width: "24px",
+                                                        fontWeight: "600",
+                                                        fontVariantNumeric: "tabular-nums",
+                                                    }, children: actualIndex + 1 }), SP_JSX.jsx("div", { style: {
+                                                        width: "40px",
+                                                        height: "40px",
+                                                        borderRadius: theme.radiusSm,
+                                                        backgroundColor: theme.surfaceContainerHighest,
                                                         overflow: "hidden",
                                                         flexShrink: 0,
                                                         display: "flex",
                                                         alignItems: "center",
-                                                        justifyContent: "center"
-                                                    }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: "#666", fontSize: "12px" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: { fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: track.title }), SP_JSX.jsx("div", { style: { fontSize: "10px", color: "#888" }, children: track.artist })] })] }) }) }, `${track.ratingKey}-${actualIndex}`));
-                            }), remainingCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "8px", color: "#666", fontSize: "11px" }, children: ["+ ", remainingCount, " more tracks"] }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { height: "60px" } }) })] })), totalTracks === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "40px", color: "#666" }, children: [SP_JSX.jsx(FaList, { style: { fontSize: "32px", marginBottom: "12px", opacity: 0.3 } }), SP_JSX.jsx("div", { children: "Queue is empty" })] }) }) }))] })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
+                                                        justifyContent: "center",
+                                                    }, children: track.thumb ? (SP_JSX.jsx("img", { src: track.thumb, style: { width: "100%", height: "100%", objectFit: "cover" } })) : (SP_JSX.jsx(FaMusic, { style: { color: theme.outline, fontSize: "14px" } })) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0, textAlign: "left" }, children: [SP_JSX.jsx("div", { style: {
+                                                                fontSize: "13px",
+                                                                fontWeight: "500",
+                                                                color: theme.onSurface,
+                                                                overflow: "hidden",
+                                                                textOverflow: "ellipsis",
+                                                                whiteSpace: "nowrap",
+                                                            }, children: track.title }), SP_JSX.jsx("div", { style: {
+                                                                fontSize: "11px",
+                                                                color: theme.onSurfaceVariant,
+                                                                marginTop: "1px",
+                                                            }, children: track.artist })] })] }) }) }, `${track.ratingKey}-${actualIndex}`));
+                            }), remainingCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                        textAlign: "center",
+                                        padding: "12px",
+                                        color: theme.onSurfaceVariant,
+                                        fontSize: "12px",
+                                        fontWeight: "500",
+                                    }, children: ["+ ", remainingCount, " more tracks"] }) })), SP_JSX.jsx("div", { style: { height: "60px" } })] })), totalTracks === 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                    textAlign: "center",
+                                    padding: "48px 20px",
+                                    background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
+                                    borderRadius: theme.radiusLg,
+                                }, children: [SP_JSX.jsx(FaList, { style: {
+                                            fontSize: "48px",
+                                            color: theme.outline,
+                                            marginBottom: "16px",
+                                            opacity: 0.25,
+                                        } }), SP_JSX.jsx("div", { style: {
+                                            color: theme.onSurfaceVariant,
+                                            fontSize: "15px",
+                                            fontWeight: "500",
+                                        }, children: "Queue is empty" }), SP_JSX.jsx("div", { style: {
+                                            color: theme.outline,
+                                            fontSize: "13px",
+                                            marginTop: "6px",
+                                        }, children: "Play a playlist to get started" })] }) }) }))] })), SP_JSX.jsx("div", { style: { height: "80px" } })] }));
 }
-// QAM Settings Component (simplified - uses full-screen page for editing)
+// QAM Settings Component - MD3 Design
 function Settings() {
     const [serverUrl, setServerUrl] = SP_REACT.useState("");
     const [token, setToken] = SP_REACT.useState("");
@@ -537,7 +958,6 @@ function Settings() {
     const [isTesting, setIsTesting] = SP_REACT.useState(false);
     const [isDiscovering, setIsDiscovering] = SP_REACT.useState(false);
     const [discoveredServers, setDiscoveredServers] = SP_REACT.useState([]);
-    // Load settings on mount and when returning from settings page
     SP_REACT.useEffect(() => {
         const loadSettings = async () => {
             try {
@@ -550,7 +970,6 @@ function Settings() {
             }
         };
         loadSettings();
-        // Reload when QAM becomes visible (returning from settings page)
         const interval = setInterval(loadSettings, 2000);
         return () => clearInterval(interval);
     }, []);
@@ -598,25 +1017,105 @@ function Settings() {
     const handleSelectServer = async (server) => {
         setServerUrl(server.url);
         setDiscoveredServers([]);
-        // Save immediately when selecting a server
         await saveSettings(server.url, token);
         setStatus({ type: "success", message: `Selected: ${server.name}` });
     };
-    // Mask token for display
     const maskedToken = token ? "•".repeat(Math.min(token.length, 20)) : "";
     const isConfigured = serverUrl && token;
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Plex Server Settings", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { padding: "8px 0", fontSize: "12px" }, children: [SP_JSX.jsxs("div", { children: [SP_JSX.jsx("strong", { children: "Server:" }), " ", serverUrl || "Not configured"] }), SP_JSX.jsxs("div", { children: [SP_JSX.jsx("strong", { children: "Token:" }), " ", maskedToken || "Not configured"] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-settings"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaCog, {}), "Edit Settings"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleDiscover, disabled: isDiscovering, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaSearch, {}), isDiscovering ? "Scanning..." : "Auto-Detect Server"] }) }) }), discoveredServers.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { padding: "8px 0", color: "#888", fontSize: "12px" }, children: "Select a server:" }) }), discoveredServers.map((server, index) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handleSelectServer(server), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [SP_JSX.jsx(FaServer, {}), SP_JSX.jsxs("div", { style: { textAlign: "left" }, children: [SP_JSX.jsx("div", { children: server.name }), SP_JSX.jsx("div", { style: { fontSize: "11px", color: "#888" }, children: server.url })] })] }) }) }, index)))] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleTestConnection, disabled: isTesting || !isConfigured, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaPlug, {}), isTesting ? "Testing..." : "Test Connection"] }) }) }), status.type !== "none" && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
-                        padding: "10px",
-                        borderRadius: "4px",
-                        backgroundColor: status.type === "success" ? "#1a472a" : status.type === "info" ? "#1a3a4a" : "#4a1a1a",
-                        color: status.type === "success" ? "#4ade80" : status.type === "info" ? "#60a5fa" : "#f87171",
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Plex Server", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                        background: theme.surfaceContainer,
+                        borderRadius: theme.radiusMd,
+                        padding: "14px 16px",
+                        border: `1px solid ${theme.outline}22`,
+                    }, children: [SP_JSX.jsxs("div", { style: {
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                                marginBottom: "10px",
+                            }, children: [SP_JSX.jsx("div", { style: {
+                                        width: "8px",
+                                        height: "8px",
+                                        borderRadius: theme.radiusFull,
+                                        backgroundColor: isConfigured ? theme.success : theme.error,
+                                        boxShadow: `0 0 8px ${isConfigured ? theme.success : theme.error}66`,
+                                    } }), SP_JSX.jsx("span", { style: {
+                                        fontSize: "12px",
+                                        fontWeight: "600",
+                                        color: isConfigured ? theme.success : theme.onSurfaceVariant,
+                                    }, children: isConfigured ? "Configured" : "Not Configured" })] }), SP_JSX.jsxs("div", { style: {
+                                fontSize: "12px",
+                                color: theme.onSurfaceVariant,
+                                lineHeight: "1.6",
+                            }, children: [SP_JSX.jsxs("div", { style: {
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }, children: [SP_JSX.jsx("strong", { style: { color: theme.onSurface }, children: "Server:" }), " ", serverUrl || "—"] }), SP_JSX.jsxs("div", { children: [SP_JSX.jsx("strong", { style: { color: theme.onSurface }, children: "Token:" }), " ", maskedToken || "—"] })] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-settings"), children: SP_JSX.jsxs("div", { style: {
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "10px",
+                            color: theme.onSurface,
+                        }, children: [SP_JSX.jsx(FaCog, { style: { color: theme.primary } }), "Edit Settings"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleDiscover, disabled: isDiscovering, children: SP_JSX.jsxs("div", { style: {
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "10px",
+                            color: theme.onSurfaceVariant,
+                        }, children: [SP_JSX.jsx(FaSearch, { style: { color: theme.secondary } }), isDiscovering ? "Scanning..." : "Auto-Detect Server"] }) }) }), discoveredServers.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                                padding: "8px 0",
+                                color: theme.onSurfaceVariant,
+                                fontSize: "12px",
+                                fontWeight: "600",
+                            }, children: "Found Servers" }) }), discoveredServers.map((server, index) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handleSelectServer(server), children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "12px",
+                                    color: theme.onSurface,
+                                    textAlign: "left",
+                                }, children: [SP_JSX.jsx(FaServer, { style: { color: theme.primary, fontSize: "18px", flexShrink: 0 } }), SP_JSX.jsxs("div", { style: { minWidth: 0, overflow: "hidden" }, children: [SP_JSX.jsx("div", { style: { fontWeight: "500", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: server.name }), SP_JSX.jsx("div", { style: { fontSize: "11px", color: theme.onSurfaceVariant, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: server.url })] })] }) }) }, index)))] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleTestConnection, disabled: isTesting || !isConfigured, children: SP_JSX.jsxs("div", { style: {
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "10px",
+                            color: isConfigured ? theme.primary : theme.onSurfaceVariant,
+                            fontWeight: "600",
+                        }, children: [SP_JSX.jsx(FaPlug, {}), isTesting ? "Testing..." : "Test Connection"] }) }) }), status.type !== "none" && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                        padding: "12px 16px",
+                        borderRadius: theme.radiusMd,
+                        background: status.type === "success"
+                            ? theme.successContainer
+                            : status.type === "info"
+                                ? theme.secondaryContainer
+                                : theme.errorContainer,
+                        color: status.type === "success"
+                            ? theme.success
+                            : status.type === "info"
+                                ? theme.secondary
+                                : theme.error,
                         textAlign: "center",
+                        fontSize: "13px",
+                        fontWeight: "500",
                     }, children: status.message }) }))] }));
 }
-// Main Content Component
+// Main Content Component - MD3 Navigation with Controller Support
 function Content() {
     const [view, setView] = SP_REACT.useState("player");
-    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Museck", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("player"), disabled: view === "player", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaMusic, {}), " Player"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), disabled: view === "settings", children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }, children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }) })] }), view === "settings" && SP_JSX.jsx(Settings, {}), view === "player" && SP_JSX.jsx(NowPlaying, {})] }));
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Museck", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("player"), children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "8px",
+                                    color: view === "player" ? theme.primary : theme.onSurfaceVariant,
+                                    fontWeight: view === "player" ? "600" : "500",
+                                }, children: [SP_JSX.jsx(FaMusic, { style: { fontSize: "14px" } }), "Player ", view === "player" && "●"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "8px",
+                                    color: view === "settings" ? theme.primary : theme.onSurfaceVariant,
+                                    fontWeight: view === "settings" ? "600" : "500",
+                                }, children: [SP_JSX.jsx(FaCog, { style: { fontSize: "14px" } }), "Settings ", view === "settings" && "●"] }) }) })] }), view === "settings" && SP_JSX.jsx(Settings, {}), view === "player" && SP_JSX.jsx(NowPlaying, {})] }));
 }
 // Track change watcher for toast notifications
 let lastTrackKey = null;

@@ -119,6 +119,48 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+// ============================================
+// Material Design 3 / Liquid Design System
+// ============================================
+const theme = {
+  // Surfaces - tonal dark palette
+  surface: "#16161e",
+  surfaceContainer: "#1e1e2a",
+  surfaceContainerHigh: "#262636",
+  surfaceContainerHighest: "#2e2e42",
+
+  // Primary accent
+  primary: "#1ed760",
+  primaryContainer: "#1a3d2a",
+  onPrimary: "#000000",
+
+  // Secondary
+  secondary: "#b4b4c4",
+  secondaryContainer: "#3d3d52",
+
+  // Text
+  onSurface: "#e8e8ee",
+  onSurfaceVariant: "#9898a8",
+  outline: "#48485a",
+
+  // States
+  error: "#ff6b6b",
+  errorContainer: "#4a2020",
+  success: "#4ade80",
+  successContainer: "#1a4a2a",
+
+  // Radii - MD3 larger corners
+  radiusSm: "12px",
+  radiusMd: "16px",
+  radiusLg: "20px",
+  radiusXl: "28px",
+  radiusFull: "9999px",
+
+  // Transitions
+  transition: "all 0.2s cubic-bezier(0.2, 0, 0, 1)",
+  transitionSlow: "all 0.3s cubic-bezier(0.2, 0, 0, 1)",
+};
+
 // Now Playing Component
 function NowPlaying() {
   const [status, setStatus] = useState<PlaybackStatus | null>(null);
@@ -197,165 +239,248 @@ function NowPlaying() {
       <PanelSection title="Now Playing">
         {track ? (
           <>
-            {/* Album Art & Info */}
+            {/* Album Art Card - Liquid Glass Style */}
             <PanelSectionRow>
-              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div style={{
+                background: `linear-gradient(135deg, ${theme.surfaceContainerHigh} 0%, ${theme.surfaceContainer} 100%)`,
+                borderRadius: theme.radiusLg,
+                padding: "16px",
+                display: "flex",
+                gap: "16px",
+                alignItems: "center",
+                boxShadow: `0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                transition: theme.transition,
+              }}>
+                {/* Album Art with glow effect */}
                 <div style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "4px",
-                  backgroundColor: "#333",
+                  width: "72px",
+                  height: "72px",
+                  borderRadius: theme.radiusMd,
+                  backgroundColor: theme.surfaceContainerHighest,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
                   overflow: "hidden",
-                  position: "relative"
+                  position: "relative",
+                  boxShadow: `0 8px 32px rgba(30, 215, 96, 0.15)`,
                 }}>
-                  <FaMusic style={{ fontSize: "24px", color: "#666", position: "absolute" }} />
+                  <FaMusic style={{ fontSize: "28px", color: theme.outline, position: "absolute" }} />
                   {(track.thumb || track.parentThumb) && (
                     <img
                       src={track.thumb || track.parentThumb}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1 }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        position: "relative",
+                        zIndex: 1,
+                        transition: theme.transition,
+                      }}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                   )}
                 </div>
+                {/* Track Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: "bold", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    fontWeight: "600",
+                    fontSize: "15px",
+                    color: theme.onSurface,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginBottom: "4px",
+                    letterSpacing: "-0.2px",
+                  }}>
                     {track.title}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    fontSize: "13px",
+                    color: theme.onSurfaceVariant,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}>
                     {track.artist}
+                  </div>
+                  <div style={{
+                    fontSize: "11px",
+                    color: theme.outline,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: "2px",
+                  }}>
+                    {track.album}
                   </div>
                 </div>
               </div>
             </PanelSectionRow>
 
-            {/* Progress Bar */}
+            {/* Progress Bar - Liquid Pill Style */}
             <PanelSectionRow>
-              <div style={{ width: "100%" }}>
+              <div style={{ width: "100%", padding: "4px 0" }}>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
+                  gap: "12px",
                   fontSize: "11px",
-                  color: "#888"
+                  color: theme.onSurfaceVariant,
+                  fontWeight: "500",
+                  fontVariantNumeric: "tabular-nums",
                 }}>
-                  <span style={{ width: "35px", textAlign: "right" }}>{formatTime(position)}</span>
+                  <span style={{ width: "36px", textAlign: "right" }}>{formatTime(position)}</span>
                   <div style={{
                     flex: 1,
-                    height: "4px",
-                    backgroundColor: "#333",
-                    borderRadius: "2px",
-                    overflow: "hidden"
+                    height: "6px",
+                    backgroundColor: theme.surfaceContainerHighest,
+                    borderRadius: theme.radiusFull,
+                    overflow: "hidden",
+                    position: "relative",
                   }}>
+                    {/* Glow track */}
                     <div style={{
+                      position: "absolute",
                       width: `${progressPercent}%`,
                       height: "100%",
-                      backgroundColor: "#1db954",
-                      borderRadius: "2px",
-                      transition: "width 0.3s ease"
+                      background: `linear-gradient(90deg, ${theme.primary}88 0%, ${theme.primary} 100%)`,
+                      borderRadius: theme.radiusFull,
+                      transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+                      boxShadow: `0 0 12px ${theme.primary}66`,
                     }} />
                   </div>
-                  <span style={{ width: "35px" }}>{formatTime(duration)}</span>
+                  <span style={{ width: "36px" }}>{formatTime(duration)}</span>
                 </div>
               </div>
             </PanelSectionRow>
 
-            {/* Compact Playback Controls - All on one line */}
+            {/* Playback Controls - Floating Pills */}
             <PanelSectionRow>
-              <div style={{ display: "flex", justifyContent: "center", gap: "8px", width: "100%" }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "12px",
+                width: "100%",
+                padding: "8px 0",
+              }}>
+                {/* Previous */}
                 <button
                   onClick={handlePrevious}
                   style={{
-                    background: "#1a1a1a",
+                    background: theme.surfaceContainerHigh,
                     border: "none",
-                    borderRadius: "50%",
-                    width: "44px",
-                    height: "44px",
+                    borderRadius: theme.radiusFull,
+                    width: "48px",
+                    height: "48px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
-                    color: "white"
+                    color: theme.onSurface,
+                    transition: theme.transition,
+                    boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
                   }}
                 >
-                  <FaStepBackward style={{ fontSize: "18px" }} />
+                  <FaStepBackward style={{ fontSize: "16px" }} />
                 </button>
+
+                {/* Play/Pause - Primary FAB */}
                 <button
                   onClick={handlePlayPause}
                   style={{
-                    background: "#1db954",
+                    background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
                     border: "none",
-                    borderRadius: "50%",
-                    width: "52px",
-                    height: "52px",
+                    borderRadius: theme.radiusFull,
+                    width: "64px",
+                    height: "64px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
-                    color: "white"
+                    color: theme.onPrimary,
+                    transition: theme.transition,
+                    boxShadow: `0 4px 20px ${theme.primary}55, 0 2px 8px rgba(0,0,0,0.3)`,
                   }}
                 >
-                  {isPlaying ? <FaPause style={{ fontSize: "22px" }} /> : <FaPlay style={{ fontSize: "22px", marginLeft: "3px" }} />}
+                  {isPlaying ? (
+                    <FaPause style={{ fontSize: "24px" }} />
+                  ) : (
+                    <FaPlay style={{ fontSize: "24px", marginLeft: "4px" }} />
+                  )}
                 </button>
+
+                {/* Next */}
                 <button
                   onClick={handleNext}
                   style={{
-                    background: "#1a1a1a",
+                    background: theme.surfaceContainerHigh,
                     border: "none",
-                    borderRadius: "50%",
-                    width: "44px",
-                    height: "44px",
+                    borderRadius: theme.radiusFull,
+                    width: "48px",
+                    height: "48px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
-                    color: "white"
+                    color: theme.onSurface,
+                    transition: theme.transition,
+                    boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
                   }}
                 >
-                  <FaStepForward style={{ fontSize: "18px" }} />
+                  <FaStepForward style={{ fontSize: "16px" }} />
                 </button>
               </div>
             </PanelSectionRow>
 
-            {/* Shuffle & Loop Controls */}
+            {/* Shuffle & Loop - Pill Toggle Buttons */}
             <PanelSectionRow>
-              <div style={{ display: "flex", justifyContent: "center", gap: "16px", width: "100%" }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: "8px",
+                width: "100%",
+              }}>
                 <button
                   onClick={handleShuffle}
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    padding: "8px 12px",
+                    background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
+                    border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
+                    borderRadius: theme.radiusXl,
+                    padding: "8px 16px",
                     display: "flex",
                     alignItems: "center",
-                    gap: "6px",
+                    gap: "8px",
                     cursor: "pointer",
-                    color: shuffleOn ? "#1db954" : "#888",
-                    fontSize: "12px"
+                    color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    transition: theme.transition,
                   }}
                 >
-                  <FaRandom style={{ fontSize: "14px" }} />
+                  <FaRandom style={{ fontSize: "12px" }} />
                   Shuffle
                 </button>
                 <button
                   onClick={handleLoop}
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    padding: "8px 12px",
+                    background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
+                    border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
+                    borderRadius: theme.radiusXl,
+                    padding: "8px 16px",
                     display: "flex",
                     alignItems: "center",
-                    gap: "6px",
+                    gap: "8px",
                     cursor: "pointer",
-                    color: loopMode !== "off" ? "#1db954" : "#888",
-                    fontSize: "12px"
+                    color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    transition: theme.transition,
                   }}
                 >
-                  <FaRedo style={{ fontSize: "14px" }} />
-                  {loopMode === "off" ? "Loop" : loopMode === "queue" ? "Loop All" : "Loop One"}
+                  <FaRedo style={{ fontSize: "12px" }} />
+                  {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
                 </button>
               </div>
             </PanelSectionRow>
@@ -364,52 +489,77 @@ function NowPlaying() {
             {status?.queue && status.queue.length > 1 && (
               <>
                 <PanelSectionRow>
-                  <div style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "8px 0"
-                  }}>
-                    <span style={{ fontSize: "12px", color: "#888" }}>Up Next</span>
-                    <ButtonItem
-                      layout="below"
-                      onClick={() => Navigation.Navigate("/museck-queue")}
-                    >
-                      <span style={{ fontSize: "11px" }}>View Queue ({status.queue.length})</span>
-                    </ButtonItem>
-                  </div>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => Navigation.Navigate("/museck-queue")}
+                  >
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      width: "100%",
+                    }}>
+                      <span style={{
+                        fontSize: "13px",
+                        color: theme.onSurfaceVariant,
+                        fontWeight: "600",
+                      }}>
+                        Up Next
+                      </span>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: "500",
+                        color: theme.primary,
+                      }}>
+                        View All ({status.queue.length})
+                      </span>
+                    </div>
+                  </ButtonItem>
                 </PanelSectionRow>
                 <PanelSectionRow>
                   <div style={{
-                    maxHeight: "150px",
+                    maxHeight: "160px",
                     overflowY: "auto",
-                    borderRadius: "8px",
-                    backgroundColor: "#1a1a1a"
+                    borderRadius: theme.radiusMd,
+                    background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
+                    border: `1px solid ${theme.outline}22`,
                   }}>
-                    {status.queue.slice(status.queue_index + 1, status.queue_index + 6).map((qTrack, idx) => (
+                    {status.queue.slice(status.queue_index + 1, status.queue_index + 5).map((qTrack, idx) => (
                       <div
                         key={`${qTrack.ratingKey}-${idx}`}
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "10px",
-                          padding: "8px 10px",
-                          borderBottom: idx < 4 ? "1px solid #2a2a2a" : "none"
+                          gap: "12px",
+                          padding: "10px 14px",
+                          borderBottom: idx < 3 ? `1px solid ${theme.outline}22` : "none",
+                          transition: theme.transition,
                         }}
                       >
-                        <span style={{ fontSize: "11px", color: "#666", width: "16px" }}>
+                        <span style={{
+                          fontSize: "11px",
+                          color: theme.outline,
+                          width: "18px",
+                          fontWeight: "600",
+                          fontVariantNumeric: "tabular-nums",
+                        }}>
                           {status.queue_index + idx + 2}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
-                            fontSize: "12px",
+                            fontSize: "13px",
+                            fontWeight: "500",
+                            color: theme.onSurface,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
-                            whiteSpace: "nowrap"
+                            whiteSpace: "nowrap",
                           }}>
                             {qTrack.title}
                           </div>
-                          <div style={{ fontSize: "10px", color: "#888" }}>
+                          <div style={{
+                            fontSize: "11px",
+                            color: theme.onSurfaceVariant,
+                          }}>
                             {qTrack.artist}
                           </div>
                         </div>
@@ -421,9 +571,28 @@ function NowPlaying() {
             )}
           </>
         ) : (
+          /* Empty State - Elegant */
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "16px", color: "#888" }}>
-              Select a playlist to start playing
+            <div style={{
+              textAlign: "center",
+              padding: "32px 16px",
+              background: `linear-gradient(135deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
+              borderRadius: theme.radiusLg,
+              border: `1px solid ${theme.outline}22`,
+            }}>
+              <FaMusic style={{
+                fontSize: "36px",
+                color: theme.outline,
+                marginBottom: "12px",
+                opacity: 0.5,
+              }} />
+              <div style={{
+                color: theme.onSurfaceVariant,
+                fontSize: "14px",
+                fontWeight: "500",
+              }}>
+                Select a playlist to start
+              </div>
             </div>
           </PanelSectionRow>
         )}
@@ -436,19 +605,31 @@ function NowPlaying() {
             layout="below"
             onClick={() => Navigation.Navigate("/museck-search")}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <FaSearch />
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              color: theme.onSurface,
+            }}>
+              <FaSearch style={{ color: theme.primary }} />
               Search Music
             </div>
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 
-      {/* Playlists Section - Controller-navigable list */}
+      {/* Playlists Section */}
       <PanelSection title="Playlists">
         {loading ? (
           <PanelSectionRow>
-            <div style={{ textAlign: "center", color: "#888" }}>Loading...</div>
+            <div style={{
+              textAlign: "center",
+              color: theme.onSurfaceVariant,
+              padding: "24px",
+            }}>
+              Loading...
+            </div>
           </PanelSectionRow>
         ) : playlists.length > 0 ? (
           <>
@@ -458,34 +639,58 @@ function NowPlaying() {
                   layout="below"
                   onClick={() => handlePlayPlaylist(pl)}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "230px" }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    width: "100%",
+                    maxWidth: "100%",
+                  }}>
+                    {/* Playlist Icon */}
                     <div style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "4px",
-                      backgroundColor: "#1a1a1a",
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: theme.radiusSm,
+                      background: theme.primaryContainer,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}>
-                      <FaList style={{ fontSize: "16px", color: "#1db954" }} />
+                      <FaList style={{ fontSize: "16px", color: theme.primary }} />
                     </div>
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    {/* Playlist Info - constrained width */}
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" }}>
                       <div style={{
                         fontSize: "13px",
                         fontWeight: "500",
+                        color: theme.onSurface,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
+                        whiteSpace: "nowrap",
                       }}>
                         {pl.title}
                       </div>
-                      <div style={{ fontSize: "11px", color: "#888" }}>
+                      <div style={{
+                        fontSize: "11px",
+                        color: theme.onSurfaceVariant,
+                      }}>
                         {pl.count} tracks
                       </div>
                     </div>
-                    <FaPlay style={{ fontSize: "12px", color: "#1db954", flexShrink: 0 }} />
+                    {/* Play indicator */}
+                    <div style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: theme.radiusFull,
+                      background: theme.primaryContainer,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}>
+                      <FaPlay style={{ fontSize: "10px", color: theme.primary, marginLeft: "2px" }} />
+                    </div>
                   </div>
                 </ButtonItem>
               </PanelSectionRow>
@@ -493,7 +698,12 @@ function NowPlaying() {
           </>
         ) : (
           <PanelSectionRow>
-            <div style={{ textAlign: "center", color: "#888", fontSize: "12px" }}>
+            <div style={{
+              textAlign: "center",
+              color: theme.onSurfaceVariant,
+              fontSize: "13px",
+              padding: "20px",
+            }}>
               No playlists found
             </div>
           </PanelSectionRow>
@@ -531,15 +741,57 @@ function SettingsPage() {
 
   return (
     <div style={{
-      padding: "20px",
+      padding: "24px",
       maxWidth: "600px",
-      margin: "0 auto",
-      color: "white"
+      margin: "40px auto 0",
+      color: theme.onSurface,
     }}>
-      <h2 style={{ marginBottom: "20px" }}>Museck Settings</h2>
+      {/* Header */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        marginBottom: "32px",
+      }}>
+        <div style={{
+          width: "48px",
+          height: "48px",
+          borderRadius: theme.radiusMd,
+          background: `linear-gradient(135deg, ${theme.primaryContainer} 0%, ${theme.surfaceContainerHighest} 100%)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <FaCog style={{ fontSize: "22px", color: theme.primary }} />
+        </div>
+        <h2 style={{
+          margin: 0,
+          fontSize: "24px",
+          fontWeight: "600",
+          letterSpacing: "-0.5px",
+        }}>
+          Settings
+        </h2>
+      </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <label style={{ display: "block", marginBottom: "8px" }}>Server URL</label>
+      {/* Server URL Card */}
+      <div style={{
+        background: theme.surfaceContainer,
+        borderRadius: theme.radiusMd,
+        padding: "20px",
+        marginBottom: "16px",
+        border: `1px solid ${theme.outline}22`,
+      }}>
+        <label style={{
+          display: "block",
+          marginBottom: "10px",
+          fontSize: "13px",
+          fontWeight: "600",
+          color: theme.onSurfaceVariant,
+          letterSpacing: "0.5px",
+        }}>
+          Server URL
+        </label>
         <TextField
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}
@@ -547,8 +799,24 @@ function SettingsPage() {
         />
       </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <label style={{ display: "block", marginBottom: "8px" }}>Plex Token</label>
+      {/* Token Card */}
+      <div style={{
+        background: theme.surfaceContainer,
+        borderRadius: theme.radiusMd,
+        padding: "20px",
+        marginBottom: "24px",
+        border: `1px solid ${theme.outline}22`,
+      }}>
+        <label style={{
+          display: "block",
+          marginBottom: "10px",
+          fontSize: "13px",
+          fontWeight: "600",
+          color: theme.onSurfaceVariant,
+          letterSpacing: "0.5px",
+        }}>
+          Plex Token
+        </label>
         <TextField
           value={token}
           onChange={(e) => setToken(e.target.value)}
@@ -557,17 +825,23 @@ function SettingsPage() {
         />
       </div>
 
-      <div style={{ display: "flex", gap: "10px" }}>
+      {/* Action Buttons */}
+      <div style={{ display: "flex", gap: "12px" }}>
         <button
           onClick={handleSave}
           disabled={isSaving}
           style={{
-            padding: "10px 20px",
-            backgroundColor: "#1a9fff",
+            flex: 1,
+            padding: "14px 24px",
+            background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
             border: "none",
-            borderRadius: "4px",
-            color: "white",
-            cursor: "pointer"
+            borderRadius: theme.radiusXl,
+            color: theme.onPrimary,
+            fontSize: "14px",
+            fontWeight: "600",
+            cursor: "pointer",
+            transition: theme.transition,
+            boxShadow: `0 4px 16px ${theme.primary}44`,
           }}
         >
           {isSaving ? "Saving..." : "Save & Return"}
@@ -575,20 +849,32 @@ function SettingsPage() {
         <button
           onClick={() => Navigation.NavigateBack()}
           style={{
-            padding: "10px 20px",
-            backgroundColor: "#444",
-            border: "none",
-            borderRadius: "4px",
-            color: "white",
-            cursor: "pointer"
+            padding: "14px 24px",
+            background: theme.surfaceContainerHigh,
+            border: `1px solid ${theme.outline}33`,
+            borderRadius: theme.radiusXl,
+            color: theme.onSurface,
+            fontSize: "14px",
+            fontWeight: "500",
+            cursor: "pointer",
+            transition: theme.transition,
           }}
         >
           Cancel
         </button>
       </div>
 
+      {/* Status Message */}
       {status && (
-        <div style={{ marginTop: "15px", color: status === "Saved!" ? "#4ade80" : "#f87171" }}>
+        <div style={{
+          marginTop: "20px",
+          padding: "14px 20px",
+          borderRadius: theme.radiusMd,
+          background: status === "Saved!" ? theme.successContainer : theme.errorContainer,
+          color: status === "Saved!" ? theme.success : theme.error,
+          textAlign: "center",
+          fontWeight: "500",
+        }}>
           {status}
         </div>
       )}
@@ -596,7 +882,7 @@ function SettingsPage() {
   );
 }
 
-// Full-screen Search Page - Uses PanelSection for proper Steam UI integration
+// Full-screen Search Page - MD3 Design
 function SearchPage() {
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -650,21 +936,33 @@ function SearchPage() {
     }
   };
 
+  // Shared card style for results - with width constraints
+  const resultCardStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    width: "100%",
+    maxWidth: "100%",
+    overflow: "hidden",
+  };
+
   return (
     <div style={{
       marginTop: "40px",
       height: "calc(100% - 40px)",
       overflowY: "auto",
       overflowX: "hidden",
-      paddingBottom: "60px"
+      paddingBottom: "60px",
     }}>
       <PanelSection title="Search Music">
+        {/* Back Button */}
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
             ← Back to Player
           </ButtonItem>
         </PanelSectionRow>
 
+        {/* Search Input */}
         <PanelSectionRow>
           <TextField
             value={query}
@@ -672,56 +970,99 @@ function SearchPage() {
           />
         </PanelSectionRow>
 
+        {/* Search Button */}
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             onClick={handleSearch}
             disabled={loading || !query.trim()}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <FaSearch style={{ color: query.trim() ? "#1db954" : "#888" }} />
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              color: query.trim() ? theme.primary : theme.onSurfaceVariant,
+              fontWeight: "600",
+            }}>
+              <FaSearch style={{ fontSize: "14px" }} />
               {loading ? "Searching..." : "Search"}
             </div>
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 
+      {/* Loading State */}
       {loading && (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>Searching...</div>
+            <div style={{
+              textAlign: "center",
+              padding: "32px",
+              color: theme.onSurfaceVariant,
+            }}>
+              <div style={{
+                width: "40px",
+                height: "40px",
+                margin: "0 auto 16px",
+                borderRadius: theme.radiusFull,
+                border: `3px solid ${theme.surfaceContainerHighest}`,
+                borderTopColor: theme.primary,
+                animation: "spin 1s linear infinite",
+              }} />
+              Searching...
+            </div>
           </PanelSectionRow>
         </PanelSection>
       )}
 
       {!loading && searched && (
         <>
-          {/* Artists */}
+          {/* Artists - Circular Avatars */}
           {artists.length > 0 && (
             <PanelSection title="Artists">
               {artists.map((artist) => (
                 <PanelSectionRow key={artist.key}>
                   <ButtonItem layout="below" onClick={() => handlePlayArtist(artist)}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={resultCardStyle}>
                       <div style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        backgroundColor: "#1db954",
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: theme.radiusFull,
+                        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryContainer} 100%)`,
                         overflow: "hidden",
                         flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center"
+                        justifyContent: "center",
+                        boxShadow: `0 4px 12px ${theme.primary}33`,
                       }}>
                         {artist.thumb ? (
                           <img src={artist.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <FaMusic style={{ color: "white", fontSize: "16px" }} />
+                          <FaMusic style={{ color: "white", fontSize: "18px" }} />
                         )}
                       </div>
-                      <div style={{ flex: 1, textAlign: "left" }}>{artist.title}</div>
-                      <div style={{ color: "#1db954", fontSize: "10px" }}>ARTIST</div>
+                      <div style={{ flex: 1, textAlign: "left" }}>
+                        <div style={{
+                          fontSize: "14px",
+                          fontWeight: "500",
+                          color: theme.onSurface,
+                        }}>
+                          {artist.title}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "600",
+                        color: theme.primary,
+                        background: theme.primaryContainer,
+                        padding: "4px 10px",
+                        borderRadius: theme.radiusFull,
+                        letterSpacing: "0.5px",
+                      }}>
+                        ARTIST
+                      </span>
                     </div>
                   </ButtonItem>
                 </PanelSectionRow>
@@ -729,39 +1070,61 @@ function SearchPage() {
             </PanelSection>
           )}
 
-          {/* Albums */}
+          {/* Albums - Square Cards */}
           {albums.length > 0 && (
             <PanelSection title="Albums">
               {albums.map((album) => (
                 <PanelSectionRow key={album.key}>
                   <ButtonItem layout="below" onClick={() => handlePlayAlbum(album)}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={resultCardStyle}>
                       <div style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "4px",
-                        backgroundColor: "#333",
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: theme.radiusSm,
+                        backgroundColor: theme.surfaceContainerHighest,
                         overflow: "hidden",
                         flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center"
+                        justifyContent: "center",
+                        boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
                       }}>
                         {album.thumb ? (
                           <img src={album.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <FaMusic style={{ color: "#666" }} />
+                          <FaMusic style={{ color: theme.outline }} />
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{
+                          fontSize: "14px",
+                          fontWeight: "500",
+                          color: theme.onSurface,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
                           {album.title}
                         </div>
-                        <div style={{ fontSize: "11px", color: "#888" }}>
+                        <div style={{
+                          fontSize: "12px",
+                          color: theme.onSurfaceVariant,
+                          marginTop: "2px",
+                        }}>
                           {album.artist} {album.year && `• ${album.year}`}
                         </div>
                       </div>
-                      <div style={{ color: "#1db954", fontSize: "10px" }}>ALBUM</div>
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "600",
+                        color: theme.secondary,
+                        background: theme.secondaryContainer,
+                        padding: "4px 10px",
+                        borderRadius: theme.radiusFull,
+                        letterSpacing: "0.5px",
+                      }}>
+                        ALBUM
+                      </span>
                     </div>
                   </ButtonItem>
                 </PanelSectionRow>
@@ -775,33 +1138,54 @@ function SearchPage() {
               {tracks.map((track) => (
                 <PanelSectionRow key={track.ratingKey}>
                   <ButtonItem layout="below" onClick={() => handlePlayTrack(track, tracks)}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={resultCardStyle}>
                       <div style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "4px",
-                        backgroundColor: "#333",
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: theme.radiusSm,
+                        backgroundColor: theme.surfaceContainerHighest,
                         overflow: "hidden",
                         flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center"
+                        justifyContent: "center",
                       }}>
                         {track.thumb ? (
                           <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <FaMusic style={{ color: "#666" }} />
+                          <FaMusic style={{ color: theme.outline }} />
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{
+                          fontSize: "14px",
+                          fontWeight: "500",
+                          color: theme.onSurface,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
                           {track.title}
                         </div>
-                        <div style={{ fontSize: "11px", color: "#888" }}>
-                          {track.artist} • {track.album}
+                        <div style={{
+                          fontSize: "12px",
+                          color: theme.onSurfaceVariant,
+                          marginTop: "2px",
+                        }}>
+                          {track.artist}
                         </div>
                       </div>
-                      <div style={{ color: "#888", fontSize: "10px" }}>TRACK</div>
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "600",
+                        color: theme.outline,
+                        background: theme.surfaceContainerHigh,
+                        padding: "4px 10px",
+                        borderRadius: theme.radiusFull,
+                        letterSpacing: "0.5px",
+                      }}>
+                        TRACK
+                      </span>
                     </div>
                   </ButtonItem>
                 </PanelSectionRow>
@@ -813,39 +1197,74 @@ function SearchPage() {
           {artists.length === 0 && albums.length === 0 && tracks.length === 0 && (
             <PanelSection>
               <PanelSectionRow>
-                <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>
-                  No results found for "{query}"
+                <div style={{
+                  textAlign: "center",
+                  padding: "40px 20px",
+                  background: theme.surfaceContainer,
+                  borderRadius: theme.radiusLg,
+                  border: `1px solid ${theme.outline}22`,
+                }}>
+                  <FaSearch style={{
+                    fontSize: "36px",
+                    color: theme.outline,
+                    marginBottom: "16px",
+                    opacity: 0.4,
+                  }} />
+                  <div style={{
+                    color: theme.onSurfaceVariant,
+                    fontSize: "14px",
+                  }}>
+                    No results found for "{query}"
+                  </div>
                 </div>
               </PanelSectionRow>
             </PanelSection>
           )}
 
-          {/* Bottom spacer for Steam UI */}
-          <PanelSection>
-            <PanelSectionRow>
-              <div style={{ height: "60px" }} />
-            </PanelSectionRow>
-          </PanelSection>
+          <div style={{ height: "60px" }} />
         </>
       )}
 
+      {/* Empty State */}
       {!loading && !searched && (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
-              <FaSearch style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.3 }} />
-              <div>Enter a search term above</div>
+            <div style={{
+              textAlign: "center",
+              padding: "48px 20px",
+              background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
+              borderRadius: theme.radiusLg,
+            }}>
+              <FaSearch style={{
+                fontSize: "48px",
+                color: theme.outline,
+                marginBottom: "16px",
+                opacity: 0.25,
+              }} />
+              <div style={{
+                color: theme.onSurfaceVariant,
+                fontSize: "15px",
+                fontWeight: "500",
+              }}>
+                Search for music
+              </div>
+              <div style={{
+                color: theme.outline,
+                fontSize: "13px",
+                marginTop: "6px",
+              }}>
+                Find artists, albums, and tracks
+              </div>
             </div>
           </PanelSectionRow>
         </PanelSection>
       )}
-      {/* Bottom spacer for Steam UI */}
       <div style={{ height: "80px" }} />
     </div>
   );
 }
 
-// Full-screen Queue Page - Fetches queue with images
+// Full-screen Queue Page - MD3 Design
 function QueuePage() {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [currentIndex, setCurrentIndex] = useState(-1);
@@ -856,13 +1275,11 @@ function QueuePage() {
   useEffect(() => {
     const fetchQueue = async () => {
       try {
-        // Get current status
         const s = await getPlaybackStatus();
         setCurrentTrack(s.current_track);
         setCurrentIndex(s.queue_index);
         setTotalTracks(s.queue?.length || 0);
 
-        // Fetch up next tracks with images
         if (s.queue_index >= 0 && s.queue && s.queue.length > s.queue_index + 1) {
           const result = await getQueueWithImages(s.queue_index + 1, 30);
           if (result.success) {
@@ -876,7 +1293,6 @@ function QueuePage() {
       }
     };
     fetchQueue();
-    // Only refresh every 5 seconds since fetching images is slower
     const interval = setInterval(fetchQueue, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -893,18 +1309,27 @@ function QueuePage() {
       height: "calc(100% - 40px)",
       overflowY: "auto",
       overflowX: "hidden",
-      paddingBottom: "60px"
+      paddingBottom: "60px",
     }}>
       <PanelSection title="Queue">
+        {/* Back Button */}
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
             ← Back to Player
           </ButtonItem>
         </PanelSectionRow>
 
+        {/* Queue Stats */}
         <PanelSectionRow>
-          <div style={{ fontSize: "12px", color: "#888" }}>
-            {totalTracks} tracks in queue
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            fontSize: "13px",
+            color: theme.onSurfaceVariant,
+          }}>
+            <FaList style={{ color: theme.primary }} />
+            <span style={{ fontWeight: "500" }}>{totalTracks}</span> tracks in queue
           </div>
         </PanelSectionRow>
       </PanelSection>
@@ -912,45 +1337,82 @@ function QueuePage() {
       {loading ? (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>Loading...</div>
+            <div style={{
+              textAlign: "center",
+              padding: "32px",
+              color: theme.onSurfaceVariant,
+            }}>
+              Loading queue...
+            </div>
           </PanelSectionRow>
         </PanelSection>
       ) : (
         <>
-          {/* Now Playing */}
+          {/* Now Playing - Hero Card */}
           {currentTrack && (
             <PanelSection title="Now Playing">
               <PanelSectionRow>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "10px",
-                  padding: "8px",
-                  backgroundColor: "#1db954",
-                  borderRadius: "8px"
+                  gap: "14px",
+                  padding: "14px 16px",
+                  background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
+                  borderRadius: theme.radiusMd,
+                  boxShadow: `0 4px 20px ${theme.primary}44`,
                 }}>
                   <div style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "4px",
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: theme.radiusSm,
                     backgroundColor: "rgba(0,0,0,0.2)",
                     overflow: "hidden",
                     flexShrink: 0,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center"
+                    justifyContent: "center",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
                   }}>
                     {currentTrack.thumb ? (
                       <img src={currentTrack.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
-                      <FaMusic style={{ color: "white" }} />
+                      <FaMusic style={{ color: "white", fontSize: "20px" }} />
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: "bold", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{
+                      fontWeight: "600",
+                      fontSize: "15px",
+                      color: theme.onPrimary,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
                       {currentTrack.title}
                     </div>
-                    <div style={{ fontSize: "11px", opacity: 0.9 }}>{currentTrack.artist}</div>
+                    <div style={{
+                      fontSize: "13px",
+                      color: "rgba(0,0,0,0.7)",
+                      marginTop: "2px",
+                    }}>
+                      {currentTrack.artist}
+                    </div>
+                  </div>
+                  {/* Playing indicator */}
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "3px",
+                  }}>
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} style={{
+                        width: "3px",
+                        height: `${8 + i * 4}px`,
+                        backgroundColor: theme.onPrimary,
+                        borderRadius: "2px",
+                        opacity: 0.8,
+                      }} />
+                    ))}
                   </div>
                 </div>
               </PanelSectionRow>
@@ -965,32 +1427,56 @@ function QueuePage() {
                 return (
                   <PanelSectionRow key={`${track.ratingKey}-${actualIndex}`}>
                     <ButtonItem layout="below" onClick={() => handlePlayIndex(actualIndex)}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <span style={{ fontSize: "11px", color: "#666", width: "20px" }}>
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        padding: "2px 0",
+                      }}>
+                        <span style={{
+                          fontSize: "12px",
+                          color: theme.outline,
+                          width: "24px",
+                          fontWeight: "600",
+                          fontVariantNumeric: "tabular-nums",
+                        }}>
                           {actualIndex + 1}
                         </span>
                         <div style={{
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "4px",
-                          backgroundColor: "#333",
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: theme.radiusSm,
+                          backgroundColor: theme.surfaceContainerHighest,
                           overflow: "hidden",
                           flexShrink: 0,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center"
+                          justifyContent: "center",
                         }}>
                           {track.thumb ? (
                             <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           ) : (
-                            <FaMusic style={{ color: "#666", fontSize: "12px" }} />
+                            <FaMusic style={{ color: theme.outline, fontSize: "14px" }} />
                           )}
                         </div>
                         <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                          <div style={{ fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{
+                            fontSize: "13px",
+                            fontWeight: "500",
+                            color: theme.onSurface,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}>
                             {track.title}
                           </div>
-                          <div style={{ fontSize: "10px", color: "#888" }}>{track.artist}</div>
+                          <div style={{
+                            fontSize: "11px",
+                            color: theme.onSurfaceVariant,
+                            marginTop: "1px",
+                          }}>
+                            {track.artist}
+                          </div>
                         </div>
                       </div>
                     </ButtonItem>
@@ -1000,15 +1486,18 @@ function QueuePage() {
 
               {remainingCount > 0 && (
                 <PanelSectionRow>
-                  <div style={{ textAlign: "center", padding: "8px", color: "#666", fontSize: "11px" }}>
+                  <div style={{
+                    textAlign: "center",
+                    padding: "12px",
+                    color: theme.onSurfaceVariant,
+                    fontSize: "12px",
+                    fontWeight: "500",
+                  }}>
                     + {remainingCount} more tracks
                   </div>
                 </PanelSectionRow>
               )}
-              {/* Bottom spacer */}
-              <PanelSectionRow>
-                <div style={{ height: "60px" }} />
-              </PanelSectionRow>
+              <div style={{ height: "60px" }} />
             </PanelSection>
           )}
 
@@ -1016,22 +1505,44 @@ function QueuePage() {
           {totalTracks === 0 && (
             <PanelSection>
               <PanelSectionRow>
-                <div style={{ textAlign: "center", padding: "40px", color: "#666" }}>
-                  <FaList style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.3 }} />
-                  <div>Queue is empty</div>
+                <div style={{
+                  textAlign: "center",
+                  padding: "48px 20px",
+                  background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
+                  borderRadius: theme.radiusLg,
+                }}>
+                  <FaList style={{
+                    fontSize: "48px",
+                    color: theme.outline,
+                    marginBottom: "16px",
+                    opacity: 0.25,
+                  }} />
+                  <div style={{
+                    color: theme.onSurfaceVariant,
+                    fontSize: "15px",
+                    fontWeight: "500",
+                  }}>
+                    Queue is empty
+                  </div>
+                  <div style={{
+                    color: theme.outline,
+                    fontSize: "13px",
+                    marginTop: "6px",
+                  }}>
+                    Play a playlist to get started
+                  </div>
                 </div>
               </PanelSectionRow>
             </PanelSection>
           )}
         </>
       )}
-      {/* Bottom spacer for Steam UI */}
       <div style={{ height: "80px" }} />
     </div>
   );
 }
 
-// QAM Settings Component (simplified - uses full-screen page for editing)
+// QAM Settings Component - MD3 Design
 function Settings() {
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
@@ -1043,7 +1554,6 @@ function Settings() {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveredServers, setDiscoveredServers] = useState<PlexServer[]>([]);
 
-  // Load settings on mount and when returning from settings page
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -1055,8 +1565,6 @@ function Settings() {
       }
     };
     loadSettings();
-
-    // Reload when QAM becomes visible (returning from settings page)
     const interval = setInterval(loadSettings, 2000);
     return () => clearInterval(interval);
   }, []);
@@ -1103,58 +1611,113 @@ function Settings() {
   const handleSelectServer = async (server: PlexServer) => {
     setServerUrl(server.url);
     setDiscoveredServers([]);
-    // Save immediately when selecting a server
     await saveSettings(server.url, token);
     setStatus({ type: "success", message: `Selected: ${server.name}` });
   };
 
-  // Mask token for display
   const maskedToken = token ? "•".repeat(Math.min(token.length, 20)) : "";
   const isConfigured = serverUrl && token;
 
   return (
-    <PanelSection title="Plex Server Settings">
-      {/* Current Status */}
+    <PanelSection title="Plex Server">
+      {/* Connection Status Card */}
       <PanelSectionRow>
-        <div style={{ padding: "8px 0", fontSize: "12px" }}>
-          <div><strong>Server:</strong> {serverUrl || "Not configured"}</div>
-          <div><strong>Token:</strong> {maskedToken || "Not configured"}</div>
+        <div style={{
+          background: theme.surfaceContainer,
+          borderRadius: theme.radiusMd,
+          padding: "14px 16px",
+          border: `1px solid ${theme.outline}22`,
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            marginBottom: "10px",
+          }}>
+            <div style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: theme.radiusFull,
+              backgroundColor: isConfigured ? theme.success : theme.error,
+              boxShadow: `0 0 8px ${isConfigured ? theme.success : theme.error}66`,
+            }} />
+            <span style={{
+              fontSize: "12px",
+              fontWeight: "600",
+              color: isConfigured ? theme.success : theme.onSurfaceVariant,
+            }}>
+              {isConfigured ? "Configured" : "Not Configured"}
+            </span>
+          </div>
+          <div style={{
+            fontSize: "12px",
+            color: theme.onSurfaceVariant,
+            lineHeight: "1.6",
+          }}>
+            <div style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
+              <strong style={{ color: theme.onSurface }}>Server:</strong> {serverUrl || "—"}
+            </div>
+            <div>
+              <strong style={{ color: theme.onSurface }}>Token:</strong> {maskedToken || "—"}
+            </div>
+          </div>
         </div>
       </PanelSectionRow>
 
-      {/* Edit Settings Button - Opens Full Screen */}
+      {/* Edit Settings */}
       <PanelSectionRow>
         <ButtonItem
           layout="below"
           onClick={() => Navigation.Navigate("/museck-settings")}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-            <FaCog />
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            color: theme.onSurface,
+          }}>
+            <FaCog style={{ color: theme.primary }} />
             Edit Settings
           </div>
         </ButtonItem>
       </PanelSectionRow>
 
-      {/* Auto-Detect Button */}
+      {/* Auto-Detect */}
       <PanelSectionRow>
         <ButtonItem
           layout="below"
           onClick={handleDiscover}
           disabled={isDiscovering}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-            <FaSearch />
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            color: theme.onSurfaceVariant,
+          }}>
+            <FaSearch style={{ color: theme.secondary }} />
             {isDiscovering ? "Scanning..." : "Auto-Detect Server"}
           </div>
         </ButtonItem>
       </PanelSectionRow>
 
-      {/* Discovered Servers List */}
+      {/* Discovered Servers */}
       {discoveredServers.length > 0 && (
         <>
           <PanelSectionRow>
-            <div style={{ padding: "8px 0", color: "#888", fontSize: "12px" }}>
-              Select a server:
+            <div style={{
+              padding: "8px 0",
+              color: theme.onSurfaceVariant,
+              fontSize: "12px",
+              fontWeight: "600",
+            }}>
+              Found Servers
             </div>
           </PanelSectionRow>
           {discoveredServers.map((server, index) => (
@@ -1163,11 +1726,17 @@ function Settings() {
                 layout="below"
                 onClick={() => handleSelectServer(server)}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <FaServer />
-                  <div style={{ textAlign: "left" }}>
-                    <div>{server.name}</div>
-                    <div style={{ fontSize: "11px", color: "#888" }}>{server.url}</div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  color: theme.onSurface,
+                  textAlign: "left",
+                }}>
+                  <FaServer style={{ color: theme.primary, fontSize: "18px", flexShrink: 0 }} />
+                  <div style={{ minWidth: 0, overflow: "hidden" }}>
+                    <div style={{ fontWeight: "500", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{server.name}</div>
+                    <div style={{ fontSize: "11px", color: theme.onSurfaceVariant, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{server.url}</div>
                   </div>
                 </div>
               </ButtonItem>
@@ -1176,14 +1745,21 @@ function Settings() {
         </>
       )}
 
-      {/* Test Connection Button */}
+      {/* Test Connection */}
       <PanelSectionRow>
         <ButtonItem
           layout="below"
           onClick={handleTestConnection}
           disabled={isTesting || !isConfigured}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            color: isConfigured ? theme.primary : theme.onSurfaceVariant,
+            fontWeight: "600",
+          }}>
             <FaPlug />
             {isTesting ? "Testing..." : "Test Connection"}
           </div>
@@ -1193,15 +1769,23 @@ function Settings() {
       {/* Status Message */}
       {status.type !== "none" && (
         <PanelSectionRow>
-          <div
-            style={{
-              padding: "10px",
-              borderRadius: "4px",
-              backgroundColor: status.type === "success" ? "#1a472a" : status.type === "info" ? "#1a3a4a" : "#4a1a1a",
-              color: status.type === "success" ? "#4ade80" : status.type === "info" ? "#60a5fa" : "#f87171",
-              textAlign: "center",
-            }}
-          >
+          <div style={{
+            padding: "12px 16px",
+            borderRadius: theme.radiusMd,
+            background: status.type === "success"
+              ? theme.successContainer
+              : status.type === "info"
+                ? theme.secondaryContainer
+                : theme.errorContainer,
+            color: status.type === "success"
+              ? theme.success
+              : status.type === "info"
+                ? theme.secondary
+                : theme.error,
+            textAlign: "center",
+            fontSize: "13px",
+            fontWeight: "500",
+          }}>
             {status.message}
           </div>
         </PanelSectionRow>
@@ -1210,22 +1794,29 @@ function Settings() {
   );
 }
 
-// Main Content Component
+// Main Content Component - MD3 Navigation with Controller Support
 function Content() {
   const [view, setView] = useState<"player" | "settings">("player");
 
   return (
     <>
-      {/* Navigation */}
+      {/* Navigation - Using ButtonItem for controller support */}
       <PanelSection title="Museck">
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             onClick={() => setView("player")}
-            disabled={view === "player"}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <FaMusic /> Player
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              color: view === "player" ? theme.primary : theme.onSurfaceVariant,
+              fontWeight: view === "player" ? "600" : "500",
+            }}>
+              <FaMusic style={{ fontSize: "14px" }} />
+              Player {view === "player" && "●"}
             </div>
           </ButtonItem>
         </PanelSectionRow>
@@ -1233,16 +1824,23 @@ function Content() {
           <ButtonItem
             layout="below"
             onClick={() => setView("settings")}
-            disabled={view === "settings"}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <FaCog /> Settings
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              color: view === "settings" ? theme.primary : theme.onSurfaceVariant,
+              fontWeight: view === "settings" ? "600" : "500",
+            }}>
+              <FaCog style={{ fontSize: "14px" }} />
+              Settings {view === "settings" && "●"}
             </div>
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 
-      {/* Content based on view */}
+      {/* Content */}
       {view === "settings" && <Settings />}
       {view === "player" && <NowPlaying />}
     </>
