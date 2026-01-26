@@ -116,6 +116,7 @@ const previousTrack = callable("previous_track");
 const setQueue = callable("set_queue");
 const toggleShuffle = callable("toggle_shuffle");
 const toggleLoop = callable("toggle_loop");
+const setVolume = callable("set_volume");
 // Backend callable functions - Plex API
 const getPlaylists = callable("get_playlists");
 const getPlaylistTracks = callable("get_playlist_tracks");
@@ -172,12 +173,24 @@ function NowPlaying() {
     const [status, setStatus] = SP_REACT.useState(null);
     const [playlists, setPlaylists] = SP_REACT.useState([]);
     const [loading, setLoading] = SP_REACT.useState(true);
+    const [localVolume, setLocalVolume] = SP_REACT.useState(null);
+    const [volumeUpdateTimer, setVolumeUpdateTimer] = SP_REACT.useState(null);
+    const [lastVolumeInteraction, setLastVolumeInteraction] = SP_REACT.useState(0);
     // Poll playback status
     SP_REACT.useEffect(() => {
         const fetchStatus = async () => {
             try {
                 const s = await getPlaybackStatus();
                 setStatus(s);
+                // Only update local volume if we aren't dragging it (timer check)
+                if (s) {
+                    // If we recently interacted with volume (within 2s), don't overwrite local volume
+                    // This prevents rubber-banding while the backend catches up
+                    const timeSinceInteraction = Date.now() - lastVolumeInteraction;
+                    if (timeSinceInteraction > 2000) {
+                        setLocalVolume(null);
+                    }
+                }
             }
             catch (e) {
                 console.error("Failed to get playback status:", e);
@@ -224,12 +237,26 @@ function NowPlaying() {
     const handleLoop = async () => {
         await toggleLoop();
     };
+    const handleVolumeChange = (newVal) => {
+        setLocalVolume(newVal);
+        // Debounce backend calls
+        if (volumeUpdateTimer)
+            clearTimeout(volumeUpdateTimer);
+        const timer = setTimeout(async () => {
+            await setVolume(newVal);
+            setVolumeUpdateTimer(null);
+        }, 200);
+        setVolumeUpdateTimer(timer);
+        setLastVolumeInteraction(Date.now());
+    };
     const track = status?.current_track;
     const isPlaying = status?.is_playing || false;
     const duration = status?.duration || 0;
     const position = status?.position || 0;
     const shuffleOn = status?.shuffle || false;
     const loopMode = status?.loop || "off";
+    // Use local volume while dragging, otherwise backend status
+    const volume = localVolume !== null ? localVolume : (status?.volume || 75);
     const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
     return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: track ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
                                     background: `linear-gradient(135deg, ${theme.surfaceContainerHigh} 0%, ${theme.surfaceContainer} 100%)`,
@@ -381,7 +408,7 @@ function NowPlaying() {
                                             fontSize: "12px",
                                             fontWeight: "500",
                                             transition: theme.transition,
-                                        }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "12px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"] })] }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("div", { style: {
+                                        }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "12px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: "Music Volume", description: "", value: volume, min: 0, max: 100, step: 1, showValue: true, onChange: handleVolumeChange }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("div", { style: {
                                                 display: "flex",
                                                 justifyContent: "space-between",
                                                 alignItems: "center",

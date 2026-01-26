@@ -39,6 +39,19 @@ class Plugin:
         "loop": "off"  # "off", "queue", "single"
     }
 
+    async def _delayed_volume_set(self, pid: int, volume: int):
+        """Wait for stream to register in PulseAudio then set volume"""
+        # Dictionary iter not possible here, just basic loop
+        # Check a few times over 2 seconds
+        for _ in range(10):
+            await asyncio.sleep(0.2)
+            if self.player_process and self.player_process.pid == pid:
+                index = await self._get_sink_input_index(pid)
+                if index:
+                    await self._set_volume_runtime(pid, volume)
+                    return
+        decky.logger.warning(f"Timed out waiting for PulseAudio stream for PID {pid}")
+
     # Original queue order (for unshuffle)
     original_queue = []
 
@@ -264,6 +277,15 @@ class Plugin:
 
         return servers
 
+    def _get_audio_env(self):
+        """Get environment variables for PulseAudio connection"""
+        env = os.environ.copy()
+        env["SDL_AUDIODRIVER"] = "pulse"
+        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
+        env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
+        return env
+
     # === Audio Player Control Methods (using ffplay) ===
 
     async def play_track(self, track_key: str, track_info: dict = None):
@@ -304,11 +326,7 @@ class Plugin:
             log_file = open(log_path, "w")
 
             # Set environment to connect to user's PulseAudio session
-            env = os.environ.copy()
-            env["SDL_AUDIODRIVER"] = "pulse"
-            env["XDG_RUNTIME_DIR"] = "/run/user/1000"
-            env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
-            env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
+            env = self._get_audio_env()
 
             self.player_process = subprocess.Popen([
                 "/usr/bin/ffplay",
@@ -326,6 +344,9 @@ class Plugin:
             self.playback_state["current_track"] = track_info
             self.playback_state["position"] = 0
             self.playback_state["duration"] = (track_info.get("duration", 0) / 1000) if track_info else 0
+
+            # Set initial volume shortly after start
+            asyncio.create_task(self._delayed_volume_set(self.player_process.pid, self.playback_state["volume"]))
 
             decky.logger.info(f"ffplay started with PID: {self.player_process.pid}")
             return {"success": True, "message": "Playing"}
@@ -399,10 +420,89 @@ class Plugin:
         return {"success": False, "message": "Seeking not supported"}
 
     async def set_volume(self, volume: int):
-        """Set volume - ffplay doesn't support runtime volume change"""
+        """Set volume - using pactl to control pulse stream"""
         volume = max(0, min(100, volume))
         self.playback_state["volume"] = volume
+        
+        # If playing, update volume immediately
+        if self.player_process and self.playback_state["is_playing"]:
+             await self._set_volume_runtime(self.player_process.pid, volume)
+             
         return {"success": True, "volume": volume}
+
+    # === PulseAudio Control Helper Methods ===
+
+    async def _get_sink_input_index(self, pid: int):
+        """Find PulseAudio sink-input index for a given PID"""
+        try:
+            # List sink-inputs using pactl with correct environment
+            process = await asyncio.create_subprocess_exec(
+                "pactl", "list", "sink-inputs",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._get_audio_env()
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                decky.logger.error(f"pactl failed: {stderr.decode()}")
+                return None
+
+            output = stdout.decode()
+            inputs = output.split("Sink Input #")
+            
+            # 1. Try to find by PID (most accurate)
+            for item in inputs:
+                if not item.strip():
+                    continue
+                
+                # Extract ID from first line
+                lines = item.split('\n')
+                input_id = lines[0].strip()
+                
+                if f'application.process.id = "{pid}"' in item:
+                    return input_id
+            
+            # 2. Fallback: Find by name "ffplay" if PID search failed
+            # This identifies streams created by ffplay generally
+            for item in inputs:
+                if not item.strip():
+                    continue
+                
+                lines = item.split('\n')
+                input_id = lines[0].strip()
+                
+                if 'application.name = "ffplay"' in item:
+                    decky.logger.info(f"Found ffplay sink input by name (ID: {input_id})")
+                    return input_id
+            
+            decky.logger.warning(f"No sink input found for PID {pid}")
+            return None
+        except Exception as e:
+            decky.logger.error(f"Error finding sink input: {e}")
+            return None
+
+    async def _set_volume_runtime(self, pid: int, volume: int):
+        """Set volume for running process via PulseAudio"""
+        try:
+            index = await self._get_sink_input_index(pid)
+            if index:
+                # pactl expects volume as percentage string e.g. "50%"
+                # Use subprocess.run for simple synchronous execution in async wrapper if needed,
+                # but better to use asyncio for consistency.
+                process = await asyncio.create_subprocess_exec(
+                    "pactl", "set-sink-input-volume", index, f"{volume}%",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=self._get_audio_env()
+                )
+                await process.wait()
+                
+                decky.logger.info(f"Updated volume to {volume}% for sink-input {index}")
+            else:
+                decky.logger.warning(f"Could not find PulseAudio sink for PID {pid}")
+        except Exception as e:
+            decky.logger.error(f"Error setting volume: {e}")
 
     async def get_playback_status(self):
         """Get current playback status"""

@@ -6,6 +6,7 @@ import {
   staticClasses,
   TextField,
   Navigation,
+  SliderField,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect } from "react";
@@ -99,6 +100,7 @@ const previousTrack = callable<[], { success: boolean; message: string }>("previ
 const setQueue = callable<[Track[], number], { success: boolean; message: string }>("set_queue");
 const toggleShuffle = callable<[], { success: boolean; shuffle: boolean }>("toggle_shuffle");
 const toggleLoop = callable<[], { success: boolean; loop: string }>("toggle_loop");
+const setVolume = callable<[number], { success: boolean; volume: number }>("set_volume");
 
 // Backend callable functions - Plex API
 const getPlaylists = callable<[], { success: boolean; playlists: Playlist[] }>("get_playlists");
@@ -166,6 +168,9 @@ function NowPlaying() {
   const [status, setStatus] = useState<PlaybackStatus | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [localVolume, setLocalVolume] = useState<number | null>(null);
+  const [volumeUpdateTimer, setVolumeUpdateTimer] = useState<any>(null);
+  const [lastVolumeInteraction, setLastVolumeInteraction] = useState<number>(0);
 
   // Poll playback status
   useEffect(() => {
@@ -173,6 +178,15 @@ function NowPlaying() {
       try {
         const s = await getPlaybackStatus();
         setStatus(s);
+        // Only update local volume if we aren't dragging it (timer check)
+        if (s) {
+          // If we recently interacted with volume (within 2s), don't overwrite local volume
+          // This prevents rubber-banding while the backend catches up
+          const timeSinceInteraction = Date.now() - lastVolumeInteraction;
+          if (timeSinceInteraction > 2000) {
+            setLocalVolume(null);
+          }
+        }
       } catch (e) {
         console.error("Failed to get playback status:", e);
       }
@@ -225,12 +239,29 @@ function NowPlaying() {
     await toggleLoop();
   };
 
+  const handleVolumeChange = (newVal: number) => {
+    setLocalVolume(newVal);
+
+    // Debounce backend calls
+    if (volumeUpdateTimer) clearTimeout(volumeUpdateTimer);
+
+    const timer = setTimeout(async () => {
+      await setVolume(newVal);
+      setVolumeUpdateTimer(null);
+    }, 200);
+
+    setVolumeUpdateTimer(timer);
+    setLastVolumeInteraction(Date.now());
+  };
+
   const track = status?.current_track;
   const isPlaying = status?.is_playing || false;
   const duration = status?.duration || 0;
   const position = status?.position || 0;
   const shuffleOn = status?.shuffle || false;
   const loopMode = status?.loop || "off";
+  // Use local volume while dragging, otherwise backend status
+  const volume = localVolume !== null ? localVolume : (status?.volume || 75);
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
@@ -485,6 +516,22 @@ function NowPlaying() {
               </div>
             </PanelSectionRow>
 
+
+
+            {/* Volume Mixer */}
+            <PanelSectionRow>
+              <SliderField
+                label="Music Volume"
+                description=""
+                value={volume}
+                min={0}
+                max={100}
+                step={1}
+                showValue={true}
+                onChange={handleVolumeChange}
+              />
+            </PanelSectionRow>
+
             {/* Mini Queue - Up Next */}
             {status?.queue && status.queue.length > 1 && (
               <>
@@ -595,11 +642,12 @@ function NowPlaying() {
               </div>
             </div>
           </PanelSectionRow>
-        )}
-      </PanelSection>
+        )
+        }
+      </PanelSection >
 
       {/* Search Section */}
-      <PanelSection title="Search">
+      < PanelSection title="Search" >
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -617,98 +665,99 @@ function NowPlaying() {
             </div>
           </ButtonItem>
         </PanelSectionRow>
-      </PanelSection>
+      </PanelSection >
 
       {/* Playlists Section */}
-      <PanelSection title="Playlists">
-        {loading ? (
-          <PanelSectionRow>
-            <div style={{
-              textAlign: "center",
-              color: theme.onSurfaceVariant,
-              padding: "24px",
-            }}>
-              Loading...
-            </div>
-          </PanelSectionRow>
-        ) : playlists.length > 0 ? (
-          <>
-            {playlists.map((pl) => (
-              <PanelSectionRow key={pl.key}>
-                <ButtonItem
-                  layout="below"
-                  onClick={() => handlePlayPlaylist(pl)}
-                >
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    width: "100%",
-                    maxWidth: "100%",
-                  }}>
-                    {/* Playlist Icon */}
+      < PanelSection title="Playlists" >
+        {
+          loading ? (
+            <PanelSectionRow>
+              <div style={{
+                textAlign: "center",
+                color: theme.onSurfaceVariant,
+                padding: "24px",
+              }}>
+                Loading...
+              </div>
+            </PanelSectionRow >
+          ) : playlists.length > 0 ? (
+            <>
+              {playlists.map((pl) => (
+                <PanelSectionRow key={pl.key}>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => handlePlayPlaylist(pl)}
+                  >
                     <div style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: theme.radiusSm,
-                      background: theme.primaryContainer,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
+                      gap: "12px",
+                      width: "100%",
+                      maxWidth: "100%",
                     }}>
-                      <FaList style={{ fontSize: "16px", color: theme.primary }} />
-                    </div>
-                    {/* Playlist Info - constrained width */}
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" }}>
+                      {/* Playlist Icon */}
                       <div style={{
-                        fontSize: "13px",
-                        fontWeight: "500",
-                        color: theme.onSurface,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        width: "40px",
+                        height: "40px",
+                        borderRadius: theme.radiusSm,
+                        background: theme.primaryContainer,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
                       }}>
-                        {pl.title}
+                        <FaList style={{ fontSize: "16px", color: theme.primary }} />
                       </div>
+                      {/* Playlist Info - constrained width */}
+                      <div style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" }}>
+                        <div style={{
+                          fontSize: "13px",
+                          fontWeight: "500",
+                          color: theme.onSurface,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {pl.title}
+                        </div>
+                        <div style={{
+                          fontSize: "11px",
+                          color: theme.onSurfaceVariant,
+                        }}>
+                          {pl.count} tracks
+                        </div>
+                      </div>
+                      {/* Play indicator */}
                       <div style={{
-                        fontSize: "11px",
-                        color: theme.onSurfaceVariant,
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: theme.radiusFull,
+                        background: theme.primaryContainer,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
                       }}>
-                        {pl.count} tracks
+                        <FaPlay style={{ fontSize: "10px", color: theme.primary, marginLeft: "2px" }} />
                       </div>
                     </div>
-                    {/* Play indicator */}
-                    <div style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: theme.radiusFull,
-                      background: theme.primaryContainer,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      <FaPlay style={{ fontSize: "10px", color: theme.primary, marginLeft: "2px" }} />
-                    </div>
-                  </div>
-                </ButtonItem>
-              </PanelSectionRow>
-            ))}
-          </>
-        ) : (
-          <PanelSectionRow>
-            <div style={{
-              textAlign: "center",
-              color: theme.onSurfaceVariant,
-              fontSize: "13px",
-              padding: "20px",
-            }}>
-              No playlists found
-            </div>
-          </PanelSectionRow>
-        )}
-      </PanelSection>
+                  </ButtonItem>
+                </PanelSectionRow>
+              ))}
+            </>
+          ) : (
+            <PanelSectionRow>
+              <div style={{
+                textAlign: "center",
+                color: theme.onSurfaceVariant,
+                fontSize: "13px",
+                padding: "20px",
+              }}>
+                No playlists found
+              </div>
+            </PanelSectionRow>
+          )}
+      </PanelSection >
     </>
   );
 }
