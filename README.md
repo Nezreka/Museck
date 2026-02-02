@@ -1,21 +1,28 @@
 # Museck
 
-A Decky Loader plugin that plays music from your Plex server on Steam Deck.
+A Decky Loader plugin that streams music from your media servers on Steam Deck.
+
+Supports **Plex**, **Jellyfin**, **Emby**, and **Navidrome** (Subsonic API).
 
 ## Features
 
-- Stream music from Plex while gaming
+- Stream music from multiple server types while gaming
 - Control playback from Quick Access Menu
 - Browse and play playlists
 - Search for tracks, albums, and artists
 - Queue management with shuffle and loop
 - Track change notifications
+- Quick-switch between servers from the QAM
+- Auto-detect Plex, Jellyfin, and Emby servers on your local network
 
 ## Requirements
 
 - Steam Deck with Decky Loader installed
-- Plex Media Server with a music library
-- Plex authentication token
+- One or more of the following music servers:
+  - **Plex** Media Server with a music library
+  - **Jellyfin** server with music library
+  - **Emby** server with music library
+  - **Navidrome** or any Subsonic-compatible server
 
 ## Installation
 
@@ -34,9 +41,18 @@ Then copy `dist/`, `main.py`, `plugin.json`, `package.json`, and `LICENSE` to th
 
 1. Open Quick Access Menu and select Museck
 2. Go to Settings
-3. Enter your Plex server URL (e.g. `http://192.168.1.100:32400`)
-4. Enter your Plex token
-5. Test connection
+3. Tap **Manage Servers**
+4. Tap **Add Server**
+5. Select your server type and enter credentials:
+
+| Server | Fields |
+|--------|--------|
+| **Plex** | Server URL, Plex Token |
+| **Jellyfin** | Server URL, Username, Password |
+| **Emby** | Server URL, Username, Password |
+| **Navidrome** | Server URL, Username, Password |
+
+6. Test connection and save
 
 ### Getting Your Plex Token
 
@@ -45,7 +61,11 @@ Then copy `dist/`, `main.py`, `plugin.json`, `package.json`, and `LICENSE` to th
 3. Open developer tools (F12) and go to Network tab
 4. Look for `X-Plex-Token` in any request
 
-You can also use Auto-Detect to find servers on your local network.
+You can also use **Auto-Detect** to find Plex, Jellyfin, and Emby servers on your local network.
+
+### Multiple Servers
+
+You can add multiple servers of any type. Use the **Quick Switch** section in the QAM settings to switch between them instantly.
 
 ## Usage
 
@@ -53,15 +73,16 @@ You can also use Auto-Detect to find servers on your local network.
 
 **Search** - Find tracks, albums, or artists. Tap to play.
 
-**Playlists** - Lists your Plex playlists. Tap to play.
+**Playlists** - Lists your playlists. Tap to play.
 
 **Queue** - View and manage the full playback queue.
 
 ## Limitations
 
 - Seeking is not supported
-- Requires local network access to Plex server
+- Requires local network access to your media server
 - Remote access requires manual server URL configuration
+- Navidrome/Subsonic servers do not support auto-detection
 
 ## License
 
