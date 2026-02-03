@@ -9,14 +9,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/museck"
+    "url": "https://github.com/Nezreka/Museck.git"
   },
   "keywords": [
     "decky",
     "plugin",
     "steam-deck"
   ],
-  "author": "Your Name",
+  "author": "Nezreka",
   "license": "BSD-3-Clause",
   "devDependencies": {
     "@decky/rollup": "^1.0.1",
