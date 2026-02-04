@@ -1,11 +1,15 @@
 {
   "name": "Museck",
   "author": "Nezreka",
-  "flags": ["debug"],
+  "flags": [
+    "debug"
+  ],
   "api_version": 1,
   "publish": {
-    "tags": ["utility"],
+    "tags": [
+      "utility"
+    ],
     "description": "A Decky Loader plugin for Steam Deck",
-    "image": ""
+    "image": "https://iili.io/fDAd1xj.png"
   }
 }
