@@ -121,6 +121,7 @@ const removeServer = callable("remove_server");
 const setActiveServer = callable("set_active_server");
 const testConnection = callable("test_connection");
 const discoverServers = callable("discover_servers");
+const savePreference = callable("save_preference");
 // Playback
 const togglePlayPause = callable("toggle_play_pause");
 const getPlaybackStatus = callable("get_playback_status");
@@ -314,21 +315,21 @@ function NowPlaying() {
                                             width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
                                             cursor: "pointer", color: theme.onSurface, transition: theme.transition,
                                             boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
-                                        }, children: SP_JSX.jsx(FaStepForward, { style: { fontSize: "16px" } }) })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "center", gap: "8px", width: "100%" }, children: [SP_JSX.jsxs("button", { onClick: handleShuffle, style: {
-                                            background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
-                                            border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
-                                            borderRadius: theme.radiusXl, padding: "8px 16px",
-                                            display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                                            color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
-                                            fontSize: "12px", fontWeight: "500", transition: theme.transition,
-                                        }, children: [SP_JSX.jsx(FaRandom, { style: { fontSize: "12px" } }), " Shuffle"] }), SP_JSX.jsxs("button", { onClick: handleLoop, style: {
-                                            background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
-                                            border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
-                                            borderRadius: theme.radiusXl, padding: "8px 16px",
-                                            display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                                            color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
-                                            fontSize: "12px", fontWeight: "500", transition: theme.transition,
-                                        }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "12px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: "Music Volume", description: "", value: volume, min: 0, max: 100, step: 1, showValue: true, onChange: handleVolumeChange }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }, children: [SP_JSX.jsx("span", { style: { fontSize: "13px", color: theme.onSurfaceVariant, fontWeight: "600" }, children: "Up Next" }), SP_JSX.jsxs("span", { style: { fontSize: "11px", fontWeight: "500", color: theme.primary }, children: ["View All (", status.queue.length, ")"] })] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                                        }, children: SP_JSX.jsx(FaStepForward, { style: { fontSize: "16px" } }) })] }) }), SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0" }, children: [SP_JSX.jsxs("button", { onClick: handleShuffle, style: {
+                                        background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
+                                        border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
+                                        borderRadius: theme.radiusXl, padding: "8px 16px",
+                                        display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
+                                        color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
+                                        fontSize: "12px", fontWeight: "500", transition: theme.transition,
+                                    }, children: [SP_JSX.jsx(FaRandom, { style: { fontSize: "12px" } }), " Shuffle"] }), SP_JSX.jsxs("button", { onClick: handleLoop, style: {
+                                        background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
+                                        border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
+                                        borderRadius: theme.radiusXl, padding: "8px 16px",
+                                        display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
+                                        color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
+                                        fontSize: "12px", fontWeight: "500", transition: theme.transition,
+                                    }, children: [SP_JSX.jsx(FaRedo, { style: { fontSize: "12px" } }), loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"] })] }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: "Music Volume", description: "", value: volume, min: 0, max: 100, step: 1, showValue: true, onChange: handleVolumeChange }) }), status?.queue && status.queue.length > 1 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-queue"), children: SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }, children: [SP_JSX.jsx("span", { style: { fontSize: "13px", color: theme.onSurfaceVariant, fontWeight: "600" }, children: "Up Next" }), SP_JSX.jsxs("span", { style: { fontSize: "11px", fontWeight: "500", color: theme.primary }, children: ["View All (", status.queue.length, ")"] })] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
                                             maxHeight: "160px", overflowY: "auto", borderRadius: theme.radiusMd,
                                             background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
                                             border: `1px solid ${theme.outline}22`,
@@ -382,7 +383,7 @@ function ServerListPage() {
         editServerConfig = { ...server };
         DFL.Navigation.Navigate("/museck-edit-server");
     };
-    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Servers", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-add-server"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.primary, fontWeight: "600" }, children: [SP_JSX.jsx(FaPlus, { style: { fontSize: "14px" } }), " Add Server"] }) }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }, children: "Loading..." }) }) })) : servers.length === 0 ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Servers", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Close" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-add-server"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.primary, fontWeight: "600" }, children: [SP_JSX.jsx(FaPlus, { style: { fontSize: "14px" } }), " Add Server"] }) }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }, children: "Loading..." }) }) })) : servers.length === 0 ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
                             textAlign: "center", padding: "48px 20px",
                             background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
                             borderRadius: theme.radiusLg,
@@ -627,7 +628,7 @@ function SearchPage() {
         display: "flex", alignItems: "center", gap: "12px",
         width: "100%", maxWidth: "100%", overflow: "hidden",
     };
-    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Search Music", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { value: query, onChange: (e) => setQuery(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSearch, disabled: loading || !query.trim(), children: SP_JSX.jsxs("div", { style: {
+    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Search Music", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Close" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { value: query, onChange: (e) => setQuery(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSearch, disabled: loading || !query.trim(), children: SP_JSX.jsxs("div", { style: {
                                     display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
                                     color: query.trim() ? theme.primary : theme.onSurfaceVariant, fontWeight: "600",
                                 }, children: [SP_JSX.jsx(FaSearch, { style: { fontSize: "14px" } }), loading ? "Searching..." : "Search"] }) }) })] }), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }, children: [SP_JSX.jsx("div", { style: {
@@ -707,7 +708,7 @@ function QueuePage() {
     }, []);
     const handlePlayIndex = async (index) => { await playQueueIndex(index); };
     const remainingCount = Math.max(0, totalTracks - currentIndex - 31);
-    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Back to Player" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: theme.onSurfaceVariant }, children: [SP_JSX.jsx(FaList, { style: { color: theme.primary } }), SP_JSX.jsx("span", { style: { fontWeight: "500" }, children: totalTracks }), " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }, children: "Loading queue..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+    return (SP_JSX.jsxs("div", { style: { marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }, children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Queue", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.NavigateBack(), children: "\u2190 Close" }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: theme.onSurfaceVariant }, children: [SP_JSX.jsx(FaList, { style: { color: theme.primary } }), SP_JSX.jsx("span", { style: { fontWeight: "500" }, children: totalTracks }), " tracks in queue"] }) })] }), loading ? (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }, children: "Loading queue..." }) }) })) : (SP_JSX.jsxs(SP_JSX.Fragment, { children: [currentTrack && (SP_JSX.jsx(DFL.PanelSection, { title: "Now Playing", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
                                     display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px",
                                     background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
                                     borderRadius: theme.radiusMd, boxShadow: `0 4px 20px ${theme.primary}44`,
@@ -737,12 +738,14 @@ function Settings() {
     const [activeId, setActiveId] = SP_REACT.useState("");
     const [status, setStatus] = SP_REACT.useState({ type: "none", message: "" });
     const [isTesting, setIsTesting] = SP_REACT.useState(false);
+    const [trackNotify, setTrackNotify] = SP_REACT.useState(true);
     SP_REACT.useEffect(() => {
         const loadSettings = async () => {
             try {
                 const settings = await getSettings();
                 setServers(settings.servers || []);
                 setActiveId(settings.active_server_id || "");
+                setTrackNotify(settings.notify_on_track_change !== false);
             }
             catch (e) {
                 console.error("Failed to load settings:", e);
@@ -776,39 +779,43 @@ function Settings() {
     };
     const activeServer = servers.find(s => s.id === activeId);
     const otherServers = servers.filter(s => s.id !== activeId);
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Server", children: [activeServer ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
-                        background: theme.surfaceContainer, borderRadius: theme.radiusMd,
-                        padding: "14px 16px", border: `1px solid ${theme.outline}22`,
-                    }, children: [SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }, children: [SP_JSX.jsx("div", { style: {
-                                        width: "8px", height: "8px", borderRadius: theme.radiusFull,
-                                        backgroundColor: theme.success,
-                                        boxShadow: `0 0 8px ${theme.success}66`,
-                                    } }), SP_JSX.jsx("span", { style: { fontSize: "12px", fontWeight: "600", color: theme.success }, children: "Active" }), SP_JSX.jsx("span", { style: {
-                                        fontSize: "9px", fontWeight: "700",
-                                        color: SERVER_TYPE_COLORS[activeServer.type],
-                                        background: SERVER_TYPE_COLORS[activeServer.type] + "22",
-                                        padding: "2px 8px", borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-                                    }, children: SERVER_TYPE_LABELS[activeServer.type] })] }), SP_JSX.jsx("div", { style: { fontSize: "14px", fontWeight: "600", color: theme.onSurface, marginBottom: "2px" }, children: activeServer.name || "Unnamed Server" }), SP_JSX.jsx("div", { style: {
-                                fontSize: "11px", color: theme.onSurfaceVariant,
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            }, children: activeServer.server_url })] }) })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
-                        background: theme.surfaceContainer, borderRadius: theme.radiusMd,
-                        padding: "14px 16px", border: `1px solid ${theme.outline}22`,
-                        textAlign: "center",
-                    }, children: SP_JSX.jsx("div", { style: { fontSize: "13px", color: theme.onSurfaceVariant }, children: "No server configured" }) }) })), otherServers.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { padding: "4px 0", color: theme.onSurfaceVariant, fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }, children: [SP_JSX.jsx(FaExchangeAlt, { style: { fontSize: "10px" } }), " Quick Switch"] }) }), otherServers.map((srv) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handleSwitchServer(srv.id), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px", color: theme.onSurface }, children: [SP_JSX.jsx("span", { style: {
-                                            fontSize: "9px", fontWeight: "700",
-                                            color: SERVER_TYPE_COLORS[srv.type],
-                                            background: SERVER_TYPE_COLORS[srv.type] + "22",
-                                            padding: "2px 8px", borderRadius: theme.radiusFull,
-                                        }, children: SERVER_TYPE_LABELS[srv.type] }), SP_JSX.jsx("span", { style: { fontSize: "13px", fontWeight: "500" }, children: srv.name || "Unnamed" })] }) }) }, srv.id)))] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-settings"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.onSurface }, children: [SP_JSX.jsx(FaCog, { style: { color: theme.primary } }), " Manage Servers"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleTestConnection, disabled: isTesting || !activeServer, children: SP_JSX.jsxs("div", { style: {
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                            color: activeServer ? theme.primary : theme.onSurfaceVariant, fontWeight: "600",
-                        }, children: [SP_JSX.jsx(FaPlug, {}), isTesting ? "Testing..." : "Test Connection"] }) }) }), status.type !== "none" && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
-                        padding: "12px 16px", borderRadius: theme.radiusMd,
-                        background: status.type === "success" ? theme.successContainer : status.type === "info" ? theme.secondaryContainer : theme.errorContainer,
-                        color: status.type === "success" ? theme.success : status.type === "info" ? theme.secondary : theme.error,
-                        textAlign: "center", fontSize: "13px", fontWeight: "500",
-                    }, children: status.message }) }))] }));
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsxs(DFL.PanelSection, { title: "Server", children: [activeServer ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: {
+                                background: theme.surfaceContainer, borderRadius: theme.radiusMd,
+                                padding: "14px 16px", border: `1px solid ${theme.outline}22`,
+                            }, children: [SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }, children: [SP_JSX.jsx("div", { style: {
+                                                width: "8px", height: "8px", borderRadius: theme.radiusFull,
+                                                backgroundColor: theme.success,
+                                                boxShadow: `0 0 8px ${theme.success}66`,
+                                            } }), SP_JSX.jsx("span", { style: { fontSize: "12px", fontWeight: "600", color: theme.success }, children: "Active" }), SP_JSX.jsx("span", { style: {
+                                                fontSize: "9px", fontWeight: "700",
+                                                color: SERVER_TYPE_COLORS[activeServer.type],
+                                                background: SERVER_TYPE_COLORS[activeServer.type] + "22",
+                                                padding: "2px 8px", borderRadius: theme.radiusFull, letterSpacing: "0.5px",
+                                            }, children: SERVER_TYPE_LABELS[activeServer.type] })] }), SP_JSX.jsx("div", { style: { fontSize: "14px", fontWeight: "600", color: theme.onSurface, marginBottom: "2px" }, children: activeServer.name || "Unnamed Server" }), SP_JSX.jsx("div", { style: {
+                                        fontSize: "11px", color: theme.onSurfaceVariant,
+                                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                    }, children: activeServer.server_url })] }) })) : (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                                background: theme.surfaceContainer, borderRadius: theme.radiusMd,
+                                padding: "14px 16px", border: `1px solid ${theme.outline}22`,
+                                textAlign: "center",
+                            }, children: SP_JSX.jsx("div", { style: { fontSize: "13px", color: theme.onSurfaceVariant }, children: "No server configured" }) }) })), otherServers.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { padding: "4px 0", color: theme.onSurfaceVariant, fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }, children: [SP_JSX.jsx(FaExchangeAlt, { style: { fontSize: "10px" } }), " Quick Switch"] }) }), otherServers.map((srv) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => handleSwitchServer(srv.id), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px", color: theme.onSurface }, children: [SP_JSX.jsx("span", { style: {
+                                                    fontSize: "9px", fontWeight: "700",
+                                                    color: SERVER_TYPE_COLORS[srv.type],
+                                                    background: SERVER_TYPE_COLORS[srv.type] + "22",
+                                                    padding: "2px 8px", borderRadius: theme.radiusFull,
+                                                }, children: SERVER_TYPE_LABELS[srv.type] }), SP_JSX.jsx("span", { style: { fontSize: "13px", fontWeight: "500" }, children: srv.name || "Unnamed" })] }) }) }, srv.id)))] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => DFL.Navigation.Navigate("/museck-settings"), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.onSurface }, children: [SP_JSX.jsx(FaCog, { style: { color: theme.primary } }), " Manage Servers"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleTestConnection, disabled: isTesting || !activeServer, children: SP_JSX.jsxs("div", { style: {
+                                    display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+                                    color: activeServer ? theme.primary : theme.onSurfaceVariant, fontWeight: "600",
+                                }, children: [SP_JSX.jsx(FaPlug, {}), isTesting ? "Testing..." : "Test Connection"] }) }) }), status.type !== "none" && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: {
+                                padding: "12px 16px", borderRadius: theme.radiusMd,
+                                background: status.type === "success" ? theme.successContainer : status.type === "info" ? theme.secondaryContainer : theme.errorContainer,
+                                color: status.type === "success" ? theme.success : status.type === "info" ? theme.secondary : theme.error,
+                                textAlign: "center", fontSize: "13px", fontWeight: "500",
+                            }, children: status.message }) }))] }), SP_JSX.jsx(DFL.PanelSection, { title: "Preferences", children: SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ToggleField, { label: "Track Change Notifications", checked: trackNotify, onChange: async (val) => {
+                            setTrackNotify(val);
+                            notifyOnTrackChange = val;
+                            await savePreference("notify_on_track_change", val);
+                        } }) }) })] }));
 }
 // =============================================================================
 // Main Content
@@ -830,6 +837,7 @@ function Content() {
 // =============================================================================
 let lastTrackKey = null;
 let watcherInterval = null;
+let notifyOnTrackChange = true;
 async function startTrackWatcher() {
     console.log("Museck: Starting track watcher");
     const checkTrack = async () => {
@@ -838,12 +846,14 @@ async function startTrackWatcher() {
             const track = status.current_track;
             if (track && track.ratingKey !== lastTrackKey) {
                 lastTrackKey = track.ratingKey;
-                toaster.toast({
-                    title: "Now Playing",
-                    body: `${track.title} - ${track.artist}`,
-                    duration: 3000,
-                    icon: SP_JSX.jsx(FaMusic, {}),
-                });
+                if (notifyOnTrackChange) {
+                    toaster.toast({
+                        title: "Now Playing",
+                        body: `${track.title} - ${track.artist}`,
+                        duration: 3000,
+                        icon: SP_JSX.jsx(FaMusic, {}),
+                    });
+                }
                 console.log(`Museck: Now playing - ${track.title}`);
             }
             else if (!track && lastTrackKey) {
@@ -875,6 +885,10 @@ var index = DFL.definePlugin(() => {
     routerHook.addRoute("/museck-edit-server", () => SP_JSX.jsx(EditServerPage, {}), { exact: true });
     routerHook.addRoute("/museck-search", () => SP_JSX.jsx(SearchPage, {}), { exact: true });
     routerHook.addRoute("/museck-queue", () => SP_JSX.jsx(QueuePage, {}), { exact: true });
+    // Load notification preference before starting watcher
+    getSettings().then((settings) => {
+        notifyOnTrackChange = settings.notify_on_track_change !== false;
+    }).catch(() => { });
     startTrackWatcher();
     return {
         name: "Museck",

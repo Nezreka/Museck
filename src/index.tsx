@@ -7,6 +7,7 @@ import {
   TextField,
   Navigation,
   SliderField,
+  ToggleField,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect } from "react";
@@ -53,6 +54,7 @@ interface ServerConfig {
 interface SettingsData {
   servers: ServerConfig[];
   active_server_id: string;
+  notify_on_track_change?: boolean;
 }
 
 interface DiscoveredServer {
@@ -127,6 +129,7 @@ const removeServer = callable<[string], { success: boolean }>("remove_server");
 const setActiveServer = callable<[string], { success: boolean }>("set_active_server");
 const testConnection = callable<[string?], { success: boolean; message: string; server_name?: string }>("test_connection");
 const discoverServers = callable<[], DiscoverResult>("discover_servers");
+const savePreference = callable<[string, boolean], { success: boolean }>("save_preference");
 
 // Playback
 const togglePlayPause = callable<[], { success: boolean }>("toggle_play_pause");
@@ -393,31 +396,29 @@ function NowPlaying() {
             </PanelSectionRow>
 
             {/* Shuffle & Loop */}
-            <PanelSectionRow>
-              <div style={{ display: "flex", justifyContent: "center", gap: "8px", width: "100%" }}>
-                <button onClick={handleShuffle} style={{
-                  background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
-                  border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
-                  borderRadius: theme.radiusXl, padding: "8px 16px",
-                  display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                  color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
-                  fontSize: "12px", fontWeight: "500", transition: theme.transition,
-                }}>
-                  <FaRandom style={{ fontSize: "12px" }} /> Shuffle
-                </button>
-                <button onClick={handleLoop} style={{
-                  background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
-                  border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
-                  borderRadius: theme.radiusXl, padding: "8px 16px",
-                  display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                  color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
-                  fontSize: "12px", fontWeight: "500", transition: theme.transition,
-                }}>
-                  <FaRedo style={{ fontSize: "12px" }} />
-                  {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
-                </button>
-              </div>
-            </PanelSectionRow>
+            <div style={{ display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0" }}>
+              <button onClick={handleShuffle} style={{
+                background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
+                border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
+                borderRadius: theme.radiusXl, padding: "8px 16px",
+                display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
+                color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
+                fontSize: "12px", fontWeight: "500", transition: theme.transition,
+              }}>
+                <FaRandom style={{ fontSize: "12px" }} /> Shuffle
+              </button>
+              <button onClick={handleLoop} style={{
+                background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
+                border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
+                borderRadius: theme.radiusXl, padding: "8px 16px",
+                display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
+                color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
+                fontSize: "12px", fontWeight: "500", transition: theme.transition,
+              }}>
+                <FaRedo style={{ fontSize: "12px" }} />
+                {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
+              </button>
+            </div>
 
             {/* Volume */}
             <PanelSectionRow>
@@ -582,7 +583,7 @@ function ServerListPage() {
       <PanelSection title="Servers">
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Back to Player
+            &larr; Close
           </ButtonItem>
         </PanelSectionRow>
         <PanelSectionRow>
@@ -1069,7 +1070,7 @@ function SearchPage() {
       <PanelSection title="Search Music">
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Back to Player
+            &larr; Close
           </ButtonItem>
         </PanelSectionRow>
         <PanelSectionRow>
@@ -1299,7 +1300,7 @@ function QueuePage() {
       <PanelSection title="Queue">
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Back to Player
+            &larr; Close
           </ButtonItem>
         </PanelSectionRow>
         <PanelSectionRow>
@@ -1434,6 +1435,7 @@ function Settings() {
   const [activeId, setActiveId] = useState("");
   const [status, setStatus] = useState<{ type: "none" | "success" | "error" | "info"; message: string }>({ type: "none", message: "" });
   const [isTesting, setIsTesting] = useState(false);
+  const [trackNotify, setTrackNotify] = useState(true);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -1441,6 +1443,7 @@ function Settings() {
         const settings = await getSettings();
         setServers(settings.servers || []);
         setActiveId(settings.active_server_id || "");
+        setTrackNotify(settings.notify_on_track_change !== false);
       } catch (e) {
         console.error("Failed to load settings:", e);
       }
@@ -1476,6 +1479,7 @@ function Settings() {
   const otherServers = servers.filter(s => s.id !== activeId);
 
   return (
+    <>
     <PanelSection title="Server">
       {/* Active Server Card */}
       {activeServer ? (
@@ -1587,6 +1591,20 @@ function Settings() {
         </PanelSectionRow>
       )}
     </PanelSection>
+    <PanelSection title="Preferences">
+      <PanelSectionRow>
+        <ToggleField
+          label="Track Change Notifications"
+          checked={trackNotify}
+          onChange={async (val: boolean) => {
+            setTrackNotify(val);
+            notifyOnTrackChange = val;
+            await savePreference("notify_on_track_change", val);
+          }}
+        />
+      </PanelSectionRow>
+    </PanelSection>
+    </>
   );
 }
 
@@ -1638,6 +1656,7 @@ function Content() {
 
 let lastTrackKey: string | null = null;
 let watcherInterval: ReturnType<typeof setInterval> | null = null;
+let notifyOnTrackChange = true;
 
 async function startTrackWatcher() {
   console.log("Museck: Starting track watcher");
@@ -1649,12 +1668,14 @@ async function startTrackWatcher() {
 
       if (track && track.ratingKey !== lastTrackKey) {
         lastTrackKey = track.ratingKey;
-        toaster.toast({
-          title: "Now Playing",
-          body: `${track.title} - ${track.artist}`,
-          duration: 3000,
-          icon: <FaMusic />,
-        });
+        if (notifyOnTrackChange) {
+          toaster.toast({
+            title: "Now Playing",
+            body: `${track.title} - ${track.artist}`,
+            duration: 3000,
+            icon: <FaMusic />,
+          });
+        }
         console.log(`Museck: Now playing - ${track.title}`);
       } else if (!track && lastTrackKey) {
         lastTrackKey = null;
@@ -1689,6 +1710,11 @@ export default definePlugin(() => {
   routerHook.addRoute("/museck-edit-server", () => <EditServerPage />, { exact: true });
   routerHook.addRoute("/museck-search", () => <SearchPage />, { exact: true });
   routerHook.addRoute("/museck-queue", () => <QueuePage />, { exact: true });
+
+  // Load notification preference before starting watcher
+  getSettings().then((settings) => {
+    notifyOnTrackChange = settings.notify_on_track_change !== false;
+  }).catch(() => {});
 
   startTrackWatcher();
 

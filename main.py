@@ -919,7 +919,14 @@ class Plugin:
         return {
             "servers": self.settings.get("servers", []),
             "active_server_id": self.settings.get("active_server_id", ""),
+            "notify_on_track_change": self.settings.get("notify_on_track_change", True),
         }
+
+    async def save_preference(self, key: str, value):
+        """Save a single preference."""
+        self.settings[key] = value
+        await self._save_settings()
+        return {"success": True}
 
     async def save_server(self, server_config: dict):
         """Add or update a server."""
