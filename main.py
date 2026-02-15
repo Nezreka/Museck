@@ -807,6 +807,7 @@ class Plugin:
     playback_start_time = None
     total_paused_time = 0
     pause_start_time = None
+    _consecutive_failures = 0
 
     # Playback state
     playback_state = {
@@ -1152,6 +1153,27 @@ class Plugin:
             self.playback_state["position"] = 0
             self.playback_state["duration"] = (track_info.get("duration", 0) / 1000) if track_info else 0
 
+            # Verify ffplay actually started and didn't immediately exit
+            await asyncio.sleep(0.5)
+            if self.player_process.poll() is not None:
+                exit_code = self.player_process.returncode
+                self.player_process = None
+                self.playback_state["is_playing"] = False
+                decky.logger.error(
+                    f"ffplay exited immediately with code {exit_code} "
+                    f"for stream: {track_key}"
+                )
+                try:
+                    log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
+                    with open(log_path, "r") as f:
+                        lines = f.readlines()[-10:]
+                        if lines:
+                            decky.logger.error(f"ffplay log: {''.join(lines).strip()}")
+                except Exception:
+                    pass
+                return {"success": False, "message": f"ffplay exited immediately (code {exit_code})"}
+
+            self._consecutive_failures = 0
             asyncio.create_task(self._delayed_volume_set(self.player_process.pid, self.playback_state["volume"]))
 
             decky.logger.info(f"ffplay started with PID: {self.player_process.pid}")
@@ -1276,9 +1298,39 @@ class Plugin:
         if self.player_process:
             poll = self.player_process.poll()
             if poll is not None:
+                elapsed = time.time() - self.playback_start_time if self.playback_start_time else 0
+                is_failure = poll != 0 or elapsed < 3
+
                 self.player_process = None
                 self.playback_state["is_playing"] = False
-                await self._auto_next()
+
+                if is_failure:
+                    self._consecutive_failures += 1
+                    decky.logger.warning(
+                        f"Track playback failed: exit code={poll}, "
+                        f"elapsed={elapsed:.1f}s, "
+                        f"consecutive failures={self._consecutive_failures}"
+                    )
+                    # Log ffplay output for debugging
+                    try:
+                        log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
+                        with open(log_path, "r") as f:
+                            lines = f.readlines()[-10:]
+                            if lines:
+                                decky.logger.warning(f"ffplay log: {''.join(lines).strip()}")
+                    except Exception:
+                        pass
+
+                    if self._consecutive_failures >= 3:
+                        decky.logger.warning(
+                            "Stopping auto-advance: 3 consecutive playback failures"
+                        )
+                        self._consecutive_failures = 0
+                    else:
+                        await self._auto_next()
+                else:
+                    self._consecutive_failures = 0
+                    await self._auto_next()
 
         if self.playback_start_time and self.playback_state["is_playing"]:
             elapsed = time.time() - self.playback_start_time - self.total_paused_time
