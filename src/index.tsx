@@ -8,6 +8,7 @@ import {
   Navigation,
   SliderField,
   ToggleField,
+  Focusable,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect } from "react";
@@ -366,16 +367,19 @@ function NowPlaying() {
 
             {/* Playback Controls */}
             <PanelSectionRow>
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", width: "100%", padding: "8px 0" }}>
-                <button onClick={handlePrevious} style={{
+              <Focusable style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", width: "100%", padding: "8px 0" }}
+                //@ts-ignore
+                flow-children="horizontal"
+              >
+                <Focusable onActivate={handlePrevious} style={{
                   background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
                   width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", color: theme.onSurface, transition: theme.transition,
                   boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
                 }}>
                   <FaStepBackward style={{ fontSize: "16px" }} />
-                </button>
-                <button onClick={handlePlayPause} style={{
+                </Focusable>
+                <Focusable onActivate={handlePlayPause} style={{
                   background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
                   border: "none", borderRadius: theme.radiusFull,
                   width: "64px", height: "64px", display: "flex", alignItems: "center", justifyContent: "center",
@@ -383,21 +387,24 @@ function NowPlaying() {
                   boxShadow: `0 4px 20px ${theme.primary}55, 0 2px 8px rgba(0,0,0,0.3)`,
                 }}>
                   {isPlaying ? <FaPause style={{ fontSize: "24px" }} /> : <FaPlay style={{ fontSize: "24px", marginLeft: "4px" }} />}
-                </button>
-                <button onClick={handleNext} style={{
+                </Focusable>
+                <Focusable onActivate={handleNext} style={{
                   background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
                   width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", color: theme.onSurface, transition: theme.transition,
                   boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
                 }}>
                   <FaStepForward style={{ fontSize: "16px" }} />
-                </button>
-              </div>
+                </Focusable>
+              </Focusable>
             </PanelSectionRow>
 
             {/* Shuffle & Loop */}
-            <div style={{ display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0" }}>
-              <button onClick={handleShuffle} style={{
+            <Focusable style={{ display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0" }}
+              //@ts-ignore
+              flow-children="horizontal"
+            >
+              <Focusable onActivate={handleShuffle} style={{
                 background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
                 border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
                 borderRadius: theme.radiusXl, padding: "8px 16px",
@@ -406,8 +413,8 @@ function NowPlaying() {
                 fontSize: "12px", fontWeight: "500", transition: theme.transition,
               }}>
                 <FaRandom style={{ fontSize: "12px" }} /> Shuffle
-              </button>
-              <button onClick={handleLoop} style={{
+              </Focusable>
+              <Focusable onActivate={handleLoop} style={{
                 background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
                 border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
                 borderRadius: theme.radiusXl, padding: "8px 16px",
@@ -417,8 +424,8 @@ function NowPlaying() {
               }}>
                 <FaRedo style={{ fontSize: "12px" }} />
                 {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
-              </button>
-            </div>
+              </Focusable>
+            </Focusable>
 
             {/* Volume */}
             <PanelSectionRow>

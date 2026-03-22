@@ -242,9 +242,19 @@ class PlexService(MusicService):
     def _parse_tracks(self, metadata: list) -> list:
         tracks = []
         for track in metadata:
-            media = track.get("Media", [{}])[0]
-            parts = media.get("Part", [{}])[0]
-            stream_key = parts.get("key", "")
+            media_list = track.get("Media") or []
+            media = media_list[0] if media_list else {}
+            parts_list = media.get("Part") or []
+            part = parts_list[0] if parts_list else {}
+            stream_key = part.get("key", "")
+
+            # Smart playlists may omit Media data — resolve via ratingKey
+            if not stream_key and track.get("ratingKey"):
+                stream_key = self._resolve_part_key(track["ratingKey"])
+
+            if not stream_key:
+                continue  # Skip unplayable tracks
+
             thumb_path = track.get("thumb", "") or track.get("parentThumb", "")
             tracks.append({
                 "key": stream_key,
@@ -258,6 +268,23 @@ class PlexService(MusicService):
                 "parentThumb": thumb_path
             })
         return tracks
+
+    def _resolve_part_key(self, rating_key: str) -> str:
+        """Fetch full metadata for a track to get its Part download key."""
+        try:
+            data = self._api_get(f"/library/metadata/{rating_key}")
+            meta = data.get("MediaContainer", {}).get("Metadata") or []
+            if not meta:
+                return ""
+            media_list = meta[0].get("Media") or []
+            if not media_list:
+                return ""
+            parts_list = media_list[0].get("Part") or []
+            if not parts_list:
+                return ""
+            return parts_list[0].get("key", "")
+        except Exception:
+            return ""
 
 
 # =============================================================================
@@ -1171,9 +1198,19 @@ class Plugin:
                             decky.logger.error(f"ffplay log: {''.join(lines).strip()}")
                 except Exception:
                     pass
+                self._consecutive_failures += 1
+                decky.logger.warning(
+                    f"Consecutive failures: {self._consecutive_failures}"
+                )
+                if self._consecutive_failures >= 3:
+                    decky.logger.warning(
+                        "Stopping auto-advance: 3 consecutive playback failures"
+                    )
+                    self._consecutive_failures = 0
+                else:
+                    await self._auto_next()
                 return {"success": False, "message": f"ffplay exited immediately (code {exit_code})"}
 
-            self._consecutive_failures = 0
             asyncio.create_task(self._delayed_volume_set(self.player_process.pid, self.playback_state["volume"]))
 
             decky.logger.info(f"ffplay started with PID: {self.player_process.pid}")
