@@ -95,6 +95,10 @@ class MusicService:
     def get_image_url(self, thumb_id: str, width: int = 100, height: int = 100) -> str:
         raise NotImplementedError
 
+    def get_libraries(self) -> list:
+        """Selectable music libraries. Empty when the backend has no concept of them."""
+        return []
+
 
 # =============================================================================
 # Plex Service
@@ -106,6 +110,36 @@ class PlexService(MusicService):
     def __init__(self, config: dict):
         super().__init__(config)
         self.token = config.get("token", "")
+        # Optional library section to confine everything to. A Plex server
+        # commonly holds an audiobook library alongside music, and both are
+        # made of "tracks" — unscoped, a search for "chapter" returns book
+        # chapters. Empty means every audio library, as before.
+        self.library_key = str(config.get("library_key") or "")
+
+    def get_libraries(self) -> list:
+        data = self._api_get("/library/sections")
+        libraries = []
+        for section in data.get("MediaContainer", {}).get("Directory", []) or []:
+            # Music libraries are type "artist" — this is also what an
+            # audiobook library is registered as, hence the ambiguity.
+            if section.get("type") == "artist":
+                libraries.append({
+                    "key": str(section.get("key")),
+                    "title": section.get("title") or "Library",
+                })
+        return libraries
+
+    def _search_endpoint(self, media_type: int, query: str, limit: int = 20) -> str:
+        """Scope a search to the chosen library when one is set.
+
+        Note `sectionId` on /search is silently ignored by Plex, and the
+        section endpoint honours `limit` but not X-Plex-Container-Size.
+        """
+        encoded = urllib.parse.quote(query)
+        if self.library_key:
+            return (f"/library/sections/{self.library_key}/search"
+                    f"?type={media_type}&query={encoded}&limit={limit}")
+        return f"/search?type={media_type}&query={encoded}"
 
     def _api_url(self, endpoint: str) -> str:
         url = f"{self.server_url}{endpoint}"
@@ -219,13 +253,13 @@ class PlexService(MusicService):
         return self._paged_tracks(f"/playlists/{playlist_key}/items")
 
     def search_tracks(self, query: str) -> list:
-        data = self._api_get(f"/search?type=10&query={urllib.parse.quote(query)}")
+        data = self._api_get(self._search_endpoint(10, query))
         if not data:
             return []
         return self._parse_tracks(data.get("MediaContainer", {}).get("Metadata", []))
 
     def search_albums(self, query: str) -> list:
-        data = self._api_get(f"/search?type=9&query={urllib.parse.quote(query)}")
+        data = self._api_get(self._search_endpoint(9, query))
         if not data:
             return []
         albums = []
@@ -240,7 +274,7 @@ class PlexService(MusicService):
         return albums
 
     def search_artists(self, query: str) -> list:
-        data = self._api_get(f"/search?type=8&query={urllib.parse.quote(query)}")
+        data = self._api_get(self._search_endpoint(8, query))
         if not data:
             return []
         artists = []
@@ -319,6 +353,11 @@ class PlexService(MusicService):
         tracks = []
         unresolved = []
         for track in metadata:
+            # Playlists can span libraries; their items name the section they
+            # came from, so a library choice can still be honoured here.
+            section = track.get("librarySectionID")
+            if self.library_key and section is not None and str(section) != self.library_key:
+                continue
             media_list = track.get("Media") or []
             media = media_list[0] if media_list else {}
             parts_list = media.get("Part") or []
@@ -1208,6 +1247,20 @@ class Plugin:
             return await _to_thread(service.test_connection)
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
+
+    async def get_libraries(self, server_config: dict):
+        """List selectable music libraries for a (possibly unsaved) config."""
+        config = self._normalize_config(server_config)
+        cls = SERVICE_CLASSES.get(config.get("type"))
+        if not cls or not config.get("server_url"):
+            return {"success": False, "libraries": [], "message": "Server not configured"}
+        try:
+            service = cls(config)
+            libraries = await _to_thread(service.get_libraries)
+            return {"success": True, "libraries": libraries}
+        except Exception as e:
+            decky.logger.error(f"get_libraries error: {e}")
+            return {"success": False, "libraries": [], "message": str(e)}
 
     async def discover_servers(self):
         """Discover servers on local network (Plex, Jellyfin, Emby)."""
