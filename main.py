@@ -2,6 +2,9 @@ import os
 import json
 import socket
 import asyncio
+import functools
+import random
+import signal
 import subprocess
 import time
 import base64
@@ -11,6 +14,17 @@ import decky
 import urllib.request
 import urllib.error
 import urllib.parse
+
+
+async def _to_thread(func, *args, **kwargs):
+    """Run a blocking callable off the event loop.
+
+    Every server call here is synchronous urllib, and the frontend polls
+    playback status once a second. Running them inline stalls that poll (and
+    with it auto-advance) for the whole duration of the request.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 
 # =============================================================================
@@ -239,8 +253,13 @@ class PlexService(MusicService):
             f"&url={encoded_thumb}&X-Plex-Token={self.token}"
         )
 
+    # Plex accepts comma-separated rating keys on /library/metadata, so
+    # unresolved tracks are looked up in batches rather than one request each.
+    _RESOLVE_BATCH = 50
+
     def _parse_tracks(self, metadata: list) -> list:
         tracks = []
+        unresolved = []
         for track in metadata:
             media_list = track.get("Media") or []
             media = media_list[0] if media_list else {}
@@ -248,15 +267,8 @@ class PlexService(MusicService):
             part = parts_list[0] if parts_list else {}
             stream_key = part.get("key", "")
 
-            # Smart playlists may omit Media data — resolve via ratingKey
-            if not stream_key and track.get("ratingKey"):
-                stream_key = self._resolve_part_key(track["ratingKey"])
-
-            if not stream_key:
-                continue  # Skip unplayable tracks
-
             thumb_path = track.get("thumb", "") or track.get("parentThumb", "")
-            tracks.append({
+            entry = {
                 "key": stream_key,
                 "ratingKey": track.get("ratingKey"),
                 "title": track.get("title", "Unknown"),
@@ -266,25 +278,40 @@ class PlexService(MusicService):
                 "index": track.get("index", 0),
                 "thumb": thumb_path,
                 "parentThumb": thumb_path
-            })
-        return tracks
+            }
+            tracks.append(entry)
 
-    def _resolve_part_key(self, rating_key: str) -> str:
-        """Fetch full metadata for a track to get its Part download key."""
-        try:
-            data = self._api_get(f"/library/metadata/{rating_key}")
-            meta = data.get("MediaContainer", {}).get("Metadata") or []
-            if not meta:
-                return ""
-            media_list = meta[0].get("Media") or []
-            if not media_list:
-                return ""
-            parts_list = media_list[0].get("Part") or []
-            if not parts_list:
-                return ""
-            return parts_list[0].get("key", "")
-        except Exception:
-            return ""
+            # Smart playlists may omit Media data — resolve via ratingKey
+            if not stream_key and entry["ratingKey"]:
+                unresolved.append(entry)
+
+        if unresolved:
+            resolved = self._resolve_part_keys([e["ratingKey"] for e in unresolved])
+            for entry in unresolved:
+                entry["key"] = resolved.get(str(entry["ratingKey"]), "")
+
+        return [t for t in tracks if t["key"]]  # Drop unplayable tracks
+
+    def _resolve_part_keys(self, rating_keys: list) -> dict:
+        """Batch-fetch metadata for tracks, mapping ratingKey -> Part key."""
+        resolved = {}
+        for i in range(0, len(rating_keys), self._RESOLVE_BATCH):
+            chunk = [str(k) for k in rating_keys[i:i + self._RESOLVE_BATCH]]
+            try:
+                data = self._api_get(f"/library/metadata/{','.join(chunk)}")
+                for meta in data.get("MediaContainer", {}).get("Metadata") or []:
+                    media_list = meta.get("Media") or []
+                    if not media_list:
+                        continue
+                    parts_list = media_list[0].get("Part") or []
+                    if not parts_list:
+                        continue
+                    part_key = parts_list[0].get("key", "")
+                    if part_key:
+                        resolved[str(meta.get("ratingKey"))] = part_key
+            except Exception as e:
+                decky.logger.error(f"Failed to resolve Plex part keys: {e}")
+        return resolved
 
 
 # =============================================================================
@@ -344,8 +371,16 @@ class JellyfinService(MusicService):
 
     def _api_get(self, endpoint: str, extra_params: dict = None) -> dict:
         self._ensure_auth()
-        url = self._api_url(endpoint, extra_params)
-        return self._http_json(url, self._auth_headers())
+        try:
+            return self._http_json(self._api_url(endpoint, extra_params), self._auth_headers())
+        except urllib.error.HTTPError as e:
+            # Access tokens expire; re-authenticate once and retry before failing.
+            if e.code not in (401, 403) or not self.username:
+                raise
+            decky.logger.info("Access token rejected, re-authenticating")
+            self._authenticated = False
+            self._authenticate()
+            return self._http_json(self._api_url(endpoint, extra_params), self._auth_headers())
 
     def test_connection(self) -> dict:
         try:
@@ -852,6 +887,10 @@ class Plugin:
     # Original queue order (for unshuffle)
     original_queue = []
 
+    # Cover art cache: "<server_id>::<thumb_id>" -> base64 data URL
+    _image_cache = {}
+    _IMAGE_CACHE_MAX = 300
+
     # =========================================================================
     # Lifecycle
     # =========================================================================
@@ -921,6 +960,7 @@ class Plugin:
 
     def _resolve_service(self):
         """Instantiate the correct service for the active server."""
+        self._image_cache.clear()
         active_id = self.settings.get("active_server_id", "")
         for srv in self.settings.get("servers", []):
             if srv.get("id") == active_id:
@@ -956,13 +996,19 @@ class Plugin:
         await self._save_settings()
         return {"success": True}
 
-    async def save_server(self, server_config: dict):
-        """Add or update a server."""
-        # Normalize URL: ensure protocol prefix
-        url = server_config.get("server_url", "").strip().rstrip("/")
+    @staticmethod
+    def _normalize_config(server_config: dict) -> dict:
+        """Normalize a server config: ensure the URL carries a protocol prefix."""
+        config = dict(server_config)
+        url = config.get("server_url", "").strip().rstrip("/")
         if url and not url.startswith("http://") and not url.startswith("https://"):
             url = "http://" + url
-            server_config["server_url"] = url
+        config["server_url"] = url
+        return config
+
+    async def save_server(self, server_config: dict):
+        """Add or update a server."""
+        server_config = self._normalize_config(server_config)
 
         servers = self.settings.get("servers", [])
 
@@ -978,7 +1024,19 @@ class Plugin:
                 break
 
         if existing is not None:
-            servers[existing] = server_config
+            # Merge so fields the form doesn't submit (Jellyfin/Emby api_key and
+            # user_id, obtained during auth) survive an edit.
+            old = servers[existing]
+            merged = {**old, **server_config}
+            identity_changed = any(
+                old.get(field) != merged.get(field)
+                for field in ("type", "server_url", "username", "password")
+            )
+            if identity_changed:
+                merged.pop("api_key", None)
+                merged.pop("user_id", None)
+            servers[existing] = merged
+            server_config = merged
         else:
             servers.append(server_config)
 
@@ -1039,7 +1097,7 @@ class Plugin:
 
         try:
             service = cls(srv)
-            result = service.test_connection()
+            result = await _to_thread(service.test_connection)
 
             # Persist auto-obtained credentials (Jellyfin/Emby auth exchange)
             if result.get("success") and (result.get("api_key") or result.get("user_id")):
@@ -1059,29 +1117,61 @@ class Plugin:
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
 
+    async def test_server_config(self, server_config: dict):
+        """Test an unsaved server config without persisting it.
+
+        Lets the form's Test button validate credentials before the user
+        commits, instead of writing a possibly-broken server to settings.
+        """
+        config = self._normalize_config(server_config)
+        if not config.get("server_url"):
+            return {"success": False, "message": "Server URL is required"}
+
+        cls = SERVICE_CLASSES.get(config.get("type"))
+        if not cls:
+            return {"success": False, "message": f"Unknown server type: {config.get('type')}"}
+
+        try:
+            service = cls(config)
+            return await _to_thread(service.test_connection)
+        except Exception as e:
+            return {"success": False, "message": f"Connection error: {str(e)}"}
+
     async def discover_servers(self):
         """Discover servers on local network (Plex, Jellyfin, Emby)."""
-        all_servers = []
-        try:
-            # Plex (GDM on UDP 32414)
-            plex = PlexService({"server_url": "", "token": ""})
-            for srv in plex.discover_servers():
+
+        def scan_plex():
+            servers = PlexService({"server_url": "", "token": ""}).discover_servers()
+            for srv in servers:
                 srv["type"] = "plex"
-                all_servers.append(srv)
-        except Exception:
-            pass
-        try:
-            # Jellyfin (UDP 7359)
-            jf = JellyfinService({"server_url": "", "api_key": "", "user_id": ""})
-            all_servers.extend(jf.discover_servers())
-        except Exception:
-            pass
-        try:
-            # Emby (UDP 7359)
-            emby = EmbyService({"server_url": "", "api_key": "", "user_id": ""})
-            all_servers.extend(emby.discover_servers())
-        except Exception:
-            pass
+            return servers
+
+        def scan(cls):
+            return cls({"server_url": "", "api_key": "", "user_id": ""}).discover_servers()
+
+        async def safe(func, *args):
+            try:
+                return await _to_thread(func, *args)
+            except Exception as e:
+                decky.logger.error(f"Discovery scan failed: {e}")
+                return []
+
+        # Each scan blocks for ~3s waiting on UDP replies — run them together.
+        results = await asyncio.gather(
+            safe(scan_plex),
+            safe(scan, JellyfinService),
+            safe(scan, EmbyService),
+        )
+
+        all_servers = []
+        seen = set()
+        for srv in [s for group in results for s in group]:
+            key = srv.get("url") or srv.get("ip")
+            if key in seen:
+                continue
+            seen.add(key)
+            all_servers.append(srv)
+
         return {
             "success": len(all_servers) > 0,
             "servers": all_servers,
@@ -1146,11 +1236,13 @@ class Plugin:
         stream_url = self.current_service.get_stream_url(track_key)
         decky.logger.info(f"Playing stream: {track_key}")
 
-        # Fetch album art
+        # Fetch album art. Copy first — track_info is usually a live queue entry,
+        # and embedding base64 art into it bloats the queue as tracks play.
         if track_info:
+            track_info = dict(track_info)
             thumb_path = track_info.get('thumb', '')
             if thumb_path and not thumb_path.startswith('data:'):
-                base64_thumb = self._fetch_image_as_base64(thumb_path)
+                base64_thumb = await _to_thread(self._fetch_image_as_base64, thumb_path)
                 if base64_thumb:
                     track_info['thumb'] = base64_thumb
                     track_info['parentThumb'] = base64_thumb
@@ -1160,16 +1252,18 @@ class Plugin:
 
         try:
             log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
-            log_file = open(log_path, "w")
             env = self._get_audio_env()
 
-            self.player_process = subprocess.Popen([
-                "/usr/bin/ffplay",
-                "-nodisp",
-                "-autoexit",
-                "-loglevel", "warning",
-                stream_url
-            ], stdout=subprocess.DEVNULL, stderr=log_file, env=env)
+            # ffplay inherits a dup of the fd, so the parent's handle can close
+            # as soon as the process is spawned.
+            with open(log_path, "w") as log_file:
+                self.player_process = subprocess.Popen([
+                    "/usr/bin/ffplay",
+                    "-nodisp",
+                    "-autoexit",
+                    "-loglevel", "warning",
+                    stream_url
+                ], stdout=subprocess.DEVNULL, stderr=log_file, env=env)
 
             self.player_paused = False
             self.playback_start_time = time.time()
@@ -1221,7 +1315,6 @@ class Plugin:
             return {"success": False, "message": str(e)}
 
     async def pause(self):
-        import signal
         if self.player_process and self.player_process.poll() is None:
             try:
                 self.player_process.send_signal(signal.SIGSTOP)
@@ -1233,7 +1326,6 @@ class Plugin:
         return {"success": True}
 
     async def resume(self):
-        import signal
         if self.player_process and self.player_process.poll() is None:
             try:
                 self.player_process.send_signal(signal.SIGCONT)
@@ -1247,20 +1339,35 @@ class Plugin:
         return {"success": True}
 
     async def toggle_play_pause(self):
+        # Nothing running (queue finished, or playback was stopped) — restart the
+        # track at the current queue position instead of silently doing nothing.
+        if not self.player_process or self.player_process.poll() is not None:
+            queue = self.playback_state["queue"]
+            index = self.playback_state["queue_index"]
+            if 0 <= index < len(queue):
+                self._consecutive_failures = 0
+                track = queue[index]
+                return await self.play_track(track.get("key"), track)
+            return {"success": False, "message": "Nothing to play"}
+
         if self.player_paused:
             return await self.resume()
-        else:
-            return await self.pause()
+        return await self.pause()
 
     async def stop(self):
         if self.player_process:
             try:
+                # A SIGSTOPped process never handles SIGTERM, so terminating a
+                # paused track would always fall through to the 2s timeout —
+                # resume it first, then wait off the event loop.
+                if self.player_paused:
+                    self.player_process.send_signal(signal.SIGCONT)
                 self.player_process.terminate()
-                self.player_process.wait(timeout=2)
-            except:
+                await _to_thread(self.player_process.wait, 2)
+            except Exception:
                 try:
                     self.player_process.kill()
-                except:
+                except Exception:
                     pass
             self.player_process = None
         self.player_paused = False
@@ -1336,7 +1443,12 @@ class Plugin:
             poll = self.player_process.poll()
             if poll is not None:
                 elapsed = time.time() - self.playback_start_time if self.playback_start_time else 0
-                is_failure = poll != 0 or elapsed < 3
+                # A clean exit after most of the track is a completion, not a
+                # failure — clamp the threshold so genuinely short tracks
+                # (interludes, skits) don't trip the circuit breaker.
+                duration = self.playback_state.get("duration") or 0
+                min_playtime = min(3.0, max(duration - 0.5, 0)) if duration else 3.0
+                is_failure = poll != 0 or elapsed < min_playtime
 
                 self.player_process = None
                 self.playback_state["is_playing"] = False
@@ -1377,7 +1489,21 @@ class Plugin:
             elapsed = time.time() - self.playback_start_time - self.total_paused_time - current_pause
             self.playback_state["position"] = min(elapsed, self.playback_state["duration"])
 
-        return self.playback_state.copy()
+        # Polled once a second — send queue metadata rather than the whole
+        # queue, which for a large playlist is a lot of JSON per tick.
+        queue = self.playback_state["queue"]
+        index = self.playback_state["queue_index"]
+        state = {k: v for k, v in self.playback_state.items() if k != "queue"}
+        state["queue_length"] = len(queue)
+        state["queue_preview"] = [
+            {
+                "ratingKey": t.get("ratingKey"),
+                "title": t.get("title", "Unknown"),
+                "artist": t.get("artist", "Unknown"),
+            }
+            for t in (queue[index + 1:index + 6] if index >= 0 else [])
+        ]
+        return state
 
     async def _auto_next(self):
         queue = self.playback_state["queue"]
@@ -1401,14 +1527,29 @@ class Plugin:
     # =========================================================================
 
     async def set_queue(self, tracks: list, start_index: int = 0):
+        tracks = list(tracks or [])
+        if not tracks or not (0 <= start_index < len(tracks)):
+            return {"success": False, "message": "Invalid queue or index"}
+
+        self._consecutive_failures = 0
+        self.original_queue = tracks.copy()
+
+        # Honour the shuffle toggle for newly loaded queues, otherwise turning
+        # shuffle on and then picking a playlist plays it in order.
+        if self.playback_state["shuffle"] and len(tracks) > 1:
+            start_track = tracks[start_index]
+            rest = [t for i, t in enumerate(tracks) if i != start_index]
+            random.shuffle(rest)
+            tracks = [start_track] + rest
+            start_index = 0
+
         self.playback_state["queue"] = tracks
         self.playback_state["queue_index"] = start_index
-        if tracks and 0 <= start_index < len(tracks):
-            track = tracks[start_index]
-            return await self.play_track(track.get("key"), track)
-        return {"success": False, "message": "Invalid queue or index"}
+        track = tracks[start_index]
+        return await self.play_track(track.get("key"), track)
 
     async def next_track(self):
+        self._consecutive_failures = 0
         queue = self.playback_state["queue"]
         index = self.playback_state["queue_index"]
         if index < len(queue) - 1:
@@ -1418,6 +1559,7 @@ class Plugin:
         return {"success": False, "message": "End of queue"}
 
     async def previous_track(self):
+        self._consecutive_failures = 0
         queue = self.playback_state["queue"]
         index = self.playback_state["queue_index"]
         if index > 0:
@@ -1430,6 +1572,7 @@ class Plugin:
         return {"success": False, "message": "Start of queue"}
 
     async def play_queue_index(self, index: int):
+        self._consecutive_failures = 0
         queue = self.playback_state["queue"]
         if 0 <= index < len(queue):
             self.playback_state["queue_index"] = index
@@ -1437,12 +1580,9 @@ class Plugin:
             return await self.play_track(track.get("key"), track)
         return {"success": False, "message": "Invalid queue index"}
 
-    async def get_queue_with_images(self, start_index: int = 0, count: int = 20):
+    def _queue_slice_with_images(self, start_index: int, end_index: int) -> list:
         queue = self.playback_state["queue"]
-        current_index = self.playback_state["queue_index"]
-        end_index = min(start_index + count, len(queue))
         tracks_slice = []
-
         for i in range(start_index, end_index):
             if i < len(queue):
                 track = queue[i].copy()
@@ -1453,6 +1593,14 @@ class Plugin:
                         track["thumb"] = base64_img
                         track["parentThumb"] = base64_img
                 tracks_slice.append(track)
+        return tracks_slice
+
+    async def get_queue_with_images(self, start_index: int = 0, count: int = 20):
+        queue = self.playback_state["queue"]
+        current_index = self.playback_state["queue_index"]
+        start_index = max(0, start_index)
+        end_index = min(start_index + count, len(queue))
+        tracks_slice = await _to_thread(self._queue_slice_with_images, start_index, end_index)
 
         return {
             "success": True,
@@ -1462,7 +1610,6 @@ class Plugin:
         }
 
     async def toggle_shuffle(self):
-        import random
         queue = self.playback_state["queue"]
         index = self.playback_state["queue_index"]
         current_track = queue[index] if 0 <= index < len(queue) else None
@@ -1470,17 +1617,25 @@ class Plugin:
         if self.playback_state["shuffle"]:
             self.playback_state["shuffle"] = False
             if self.original_queue:
-                self.playback_state["queue"] = self.original_queue.copy()
-                if current_track:
-                    for i, t in enumerate(self.playback_state["queue"]):
-                        if t.get("ratingKey") == current_track.get("ratingKey"):
+                restored = self.original_queue.copy()
+                self.playback_state["queue"] = restored
+                # Identity match first: shallow copies share track objects, so
+                # this stays correct when a playlist repeats the same track.
+                if current_track is not None:
+                    for i, t in enumerate(restored):
+                        if t is current_track:
                             self.playback_state["queue_index"] = i
                             break
+                    else:
+                        for i, t in enumerate(restored):
+                            if t.get("ratingKey") == current_track.get("ratingKey"):
+                                self.playback_state["queue_index"] = i
+                                break
         else:
             self.playback_state["shuffle"] = True
             self.original_queue = queue.copy()
-            if current_track and len(queue) > 1:
-                other_tracks = [t for t in queue if t.get("ratingKey") != current_track.get("ratingKey")]
+            if current_track is not None and len(queue) > 1:
+                other_tracks = [t for i, t in enumerate(queue) if i != index]
                 random.shuffle(other_tracks)
                 self.playback_state["queue"] = [current_track] + other_tracks
                 self.playback_state["queue_index"] = 0
@@ -1501,11 +1656,26 @@ class Plugin:
     # Music API Methods (delegate to service)
     # =========================================================================
 
+    def _hydrate_thumbs(self, items: list, limit: int) -> list:
+        """Replace thumb IDs with base64 data URLs for the first `limit` items."""
+        for item in items[:limit]:
+            thumb = item.get("thumb", "")
+            if not thumb or thumb.startswith("data:"):
+                continue
+            img = self._fetch_image_as_base64(thumb)
+            # Keep the original ID on failure so it can be retried later —
+            # overwriting with "" loses the reference permanently.
+            if img:
+                item["thumb"] = img
+                if "parentThumb" in item:
+                    item["parentThumb"] = img
+        return items
+
     async def get_playlists(self):
         if not self.current_service:
             return {"success": False, "playlists": []}
         try:
-            playlists = self.current_service.get_playlists()
+            playlists = await _to_thread(self.current_service.get_playlists)
             return {"success": True, "playlists": playlists}
         except Exception as e:
             decky.logger.error(f"get_playlists error: {e}")
@@ -1515,7 +1685,7 @@ class Plugin:
         if not self.current_service:
             return {"success": False, "tracks": []}
         try:
-            tracks = self.current_service.get_playlist_tracks(playlist_key)
+            tracks = await _to_thread(self.current_service.get_playlist_tracks, playlist_key)
             return {"success": True, "tracks": tracks}
         except Exception as e:
             decky.logger.error(f"get_playlist_tracks error: {e}")
@@ -1524,15 +1694,12 @@ class Plugin:
     async def search(self, query: str):
         if not self.current_service:
             return {"success": False, "results": []}
+
+        def run():
+            return self._hydrate_thumbs(self.current_service.search_tracks(query), 10)
+
         try:
-            tracks = self.current_service.search_tracks(query)
-            # Fetch cover art for first 10
-            for track in tracks[:10]:
-                if track.get("thumb") and not track["thumb"].startswith("data:"):
-                    img = self._fetch_image_as_base64(track["thumb"])
-                    track["thumb"] = img
-                    track["parentThumb"] = img
-            return {"success": True, "results": tracks}
+            return {"success": True, "results": await _to_thread(run)}
         except Exception as e:
             decky.logger.error(f"search error: {e}")
             return {"success": False, "results": []}
@@ -1540,12 +1707,12 @@ class Plugin:
     async def search_albums(self, query: str):
         if not self.current_service:
             return {"success": False, "albums": []}
+
+        def run():
+            return self._hydrate_thumbs(self.current_service.search_albums(query), 10)
+
         try:
-            albums = self.current_service.search_albums(query)
-            for album in albums[:10]:
-                if album.get("thumb") and not album["thumb"].startswith("data:"):
-                    album["thumb"] = self._fetch_image_as_base64(album["thumb"])
-            return {"success": True, "albums": albums}
+            return {"success": True, "albums": await _to_thread(run)}
         except Exception as e:
             decky.logger.error(f"search_albums error: {e}")
             return {"success": False, "albums": []}
@@ -1553,12 +1720,12 @@ class Plugin:
     async def search_artists(self, query: str):
         if not self.current_service:
             return {"success": False, "artists": []}
+
+        def run():
+            return self._hydrate_thumbs(self.current_service.search_artists(query), 5)
+
         try:
-            artists = self.current_service.search_artists(query)
-            for artist in artists[:5]:
-                if artist.get("thumb") and not artist["thumb"].startswith("data:"):
-                    artist["thumb"] = self._fetch_image_as_base64(artist["thumb"])
-            return {"success": True, "artists": artists}
+            return {"success": True, "artists": await _to_thread(run)}
         except Exception as e:
             decky.logger.error(f"search_artists error: {e}")
             return {"success": False, "artists": []}
@@ -1567,7 +1734,7 @@ class Plugin:
         if not self.current_service:
             return {"success": False, "tracks": []}
         try:
-            tracks = self.current_service.get_album_tracks(album_key)
+            tracks = await _to_thread(self.current_service.get_album_tracks, album_key)
             return {"success": True, "tracks": tracks}
         except Exception as e:
             decky.logger.error(f"get_album_tracks error: {e}")
@@ -1576,15 +1743,12 @@ class Plugin:
     async def get_artist_tracks(self, artist_key: str):
         if not self.current_service:
             return {"success": False, "tracks": []}
+
+        def run():
+            return self._hydrate_thumbs(self.current_service.get_artist_tracks(artist_key), 20)
+
         try:
-            tracks = self.current_service.get_artist_tracks(artist_key)
-            # Fetch art for first 20
-            for track in tracks[:20]:
-                if track.get("thumb") and not track["thumb"].startswith("data:"):
-                    img = self._fetch_image_as_base64(track["thumb"])
-                    track["thumb"] = img
-                    track["parentThumb"] = img
-            return {"success": True, "tracks": tracks}
+            return {"success": True, "tracks": await _to_thread(run)}
         except Exception as e:
             decky.logger.error(f"get_artist_tracks error: {e}")
             return {"success": False, "tracks": []}
@@ -1594,9 +1758,19 @@ class Plugin:
     # =========================================================================
 
     def _fetch_image_as_base64(self, thumb_id: str) -> str:
-        """Fetch image via the active service and return as base64 data URL."""
+        """Fetch image via the active service and return as base64 data URL.
+
+        Results are cached — the queue view re-requests the same artwork on
+        every refresh, and each miss is a round trip to the media server.
+        """
         if not thumb_id or not self.current_service:
             return ""
+
+        cache_key = f"{self.settings.get('active_server_id', '')}::{thumb_id}"
+        cached = self._image_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             url = self.current_service.get_image_url(thumb_id)
             if not url:
@@ -1611,7 +1785,12 @@ class Plugin:
                 image_data = response.read()
                 content_type = response.headers.get('Content-Type', 'image/jpeg')
                 b64_data = base64.b64encode(image_data).decode('utf-8')
-                return f"data:{content_type};base64,{b64_data}"
+                data_url = f"data:{content_type};base64,{b64_data}"
+
+            if len(self._image_cache) >= self._IMAGE_CACHE_MAX:
+                self._image_cache.pop(next(iter(self._image_cache)), None)
+            self._image_cache[cache_key] = data_url
+            return data_url
         except Exception as e:
             decky.logger.error(f"Failed to fetch image: {e}")
             return ""

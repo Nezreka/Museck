@@ -11,7 +11,7 @@ import {
   Focusable,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   FaMusic,
   FaPlug,
@@ -85,13 +85,21 @@ interface Track {
   parentThumb: string;
 }
 
+// Trimmed queue entry sent with the once-a-second status poll
+interface QueuePreviewItem {
+  ratingKey: string;
+  title: string;
+  artist: string;
+}
+
 interface PlaybackStatus {
   is_playing: boolean;
   current_track: Track | null;
   position: number;
   duration: number;
   volume: number;
-  queue: Track[];
+  queue_length: number;
+  queue_preview: QueuePreviewItem[];
   queue_index: number;
   shuffle: boolean;
   loop: "off" | "queue" | "single";
@@ -129,6 +137,7 @@ const saveServer = callable<[ServerConfig], { success: boolean; id: string }>("s
 const removeServer = callable<[string], { success: boolean }>("remove_server");
 const setActiveServer = callable<[string], { success: boolean }>("set_active_server");
 const testConnection = callable<[string?], { success: boolean; message: string; server_name?: string }>("test_connection");
+const testServerConfig = callable<[ServerConfig], { success: boolean; message: string; server_name?: string; api_key?: string; user_id?: string }>("test_server_config");
 const discoverServers = callable<[], DiscoverResult>("discover_servers");
 const savePreference = callable<[string, boolean], { success: boolean }>("save_preference");
 
@@ -211,6 +220,41 @@ const theme = {
   transitionSlow: "all 0.3s cubic-bezier(0.2, 0, 0, 1)",
 };
 
+// Focusable renders a plain div, so gamepad focus produces no visual change on
+// its own — on a controller-only device that leaves no way to tell what's
+// selected. Steam's navigation adds `gpfocus` to the focused element; `:focus`
+// covers mouse/touch. Also defines the spinner keyframes used by the search page.
+const STYLE_ELEMENT_ID = "museck-styles";
+const GLOBAL_STYLES = `
+@keyframes museck-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.museck-ctl, .museck-chip { outline: none; }
+.museck-ctl:focus, .museck-ctl.gpfocus {
+  transform: scale(1.12);
+  filter: brightness(1.2);
+  box-shadow: 0 0 0 3px ${theme.primary}, 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+}
+.museck-chip:focus, .museck-chip.gpfocus {
+  border-color: ${theme.primary} !important;
+  background: ${theme.surfaceContainerHigh} !important;
+  filter: brightness(1.15);
+}
+`;
+
+function injectGlobalStyles() {
+  if (document.getElementById(STYLE_ELEMENT_ID)) return;
+  const el = document.createElement("style");
+  el.id = STYLE_ELEMENT_ID;
+  el.textContent = GLOBAL_STYLES;
+  document.head.appendChild(el);
+}
+
+function removeGlobalStyles() {
+  document.getElementById(STYLE_ELEMENT_ID)?.remove();
+}
+
 // =============================================================================
 // Now Playing Component
 // =============================================================================
@@ -220,19 +264,20 @@ function NowPlaying() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [localVolume, setLocalVolume] = useState<number | null>(null);
-  const [volumeUpdateTimer, setVolumeUpdateTimer] = useState<any>(null);
-  const [lastVolumeInteraction, setLastVolumeInteraction] = useState<number>(0);
+  // Refs, not state: the poll below is created once, so a state value would be
+  // captured at its initial 0 and the grace period would never apply.
+  const volumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastVolumeInteractionRef = useRef(0);
 
   useEffect(() => {
     const fetchStatus = async () => {
       try {
         const s = await getPlaybackStatus();
         setStatus(s);
-        if (s) {
-          const timeSinceInteraction = Date.now() - lastVolumeInteraction;
-          if (timeSinceInteraction > 2000) {
-            setLocalVolume(null);
-          }
+        // Hand the slider back to the backend value once the user has
+        // stopped dragging, so an in-progress drag isn't yanked back.
+        if (s && Date.now() - lastVolumeInteractionRef.current > 2000) {
+          setLocalVolume(null);
         }
       } catch (e) {
         console.error("Failed to get playback status:", e);
@@ -240,7 +285,10 @@ function NowPlaying() {
     };
     fetchStatus();
     const interval = setInterval(fetchStatus, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (volumeTimerRef.current) clearTimeout(volumeTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -273,13 +321,12 @@ function NowPlaying() {
 
   const handleVolumeChange = (newVal: number) => {
     setLocalVolume(newVal);
-    if (volumeUpdateTimer) clearTimeout(volumeUpdateTimer);
-    const timer = setTimeout(async () => {
-      await setVolume(newVal);
-      setVolumeUpdateTimer(null);
+    lastVolumeInteractionRef.current = Date.now();
+    if (volumeTimerRef.current) clearTimeout(volumeTimerRef.current);
+    volumeTimerRef.current = setTimeout(() => {
+      volumeTimerRef.current = null;
+      setVolume(newVal).catch((e) => console.error("Failed to set volume:", e));
     }, 200);
-    setVolumeUpdateTimer(timer);
-    setLastVolumeInteraction(Date.now());
   };
 
   const track = status?.current_track;
@@ -290,6 +337,8 @@ function NowPlaying() {
   const loopMode = status?.loop || "off";
   const volume = localVolume !== null ? localVolume : (status?.volume || 75);
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+  const queueLength = status?.queue_length || 0;
+  const upNext = (status?.queue_preview || []).slice(0, 4);
 
   return (
     <>
@@ -371,7 +420,7 @@ function NowPlaying() {
                 //@ts-ignore
                 flow-children="horizontal"
               >
-                <Focusable onActivate={handlePrevious} style={{
+                <Focusable className="museck-ctl" onActivate={handlePrevious} style={{
                   background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
                   width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", color: theme.onSurface, transition: theme.transition,
@@ -379,7 +428,7 @@ function NowPlaying() {
                 }}>
                   <FaStepBackward style={{ fontSize: "16px" }} />
                 </Focusable>
-                <Focusable onActivate={handlePlayPause} style={{
+                <Focusable className="museck-ctl" onActivate={handlePlayPause} style={{
                   background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
                   border: "none", borderRadius: theme.radiusFull,
                   width: "64px", height: "64px", display: "flex", alignItems: "center", justifyContent: "center",
@@ -388,7 +437,7 @@ function NowPlaying() {
                 }}>
                   {isPlaying ? <FaPause style={{ fontSize: "24px" }} /> : <FaPlay style={{ fontSize: "24px", marginLeft: "4px" }} />}
                 </Focusable>
-                <Focusable onActivate={handleNext} style={{
+                <Focusable className="museck-ctl" onActivate={handleNext} style={{
                   background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
                   width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", color: theme.onSurface, transition: theme.transition,
@@ -404,7 +453,7 @@ function NowPlaying() {
               //@ts-ignore
               flow-children="horizontal"
             >
-              <Focusable onActivate={handleShuffle} style={{
+              <Focusable className="museck-chip" onActivate={handleShuffle} style={{
                 background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
                 border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
                 borderRadius: theme.radiusXl, padding: "8px 16px",
@@ -414,7 +463,7 @@ function NowPlaying() {
               }}>
                 <FaRandom style={{ fontSize: "12px" }} /> Shuffle
               </Focusable>
-              <Focusable onActivate={handleLoop} style={{
+              <Focusable className="museck-chip" onActivate={handleLoop} style={{
                 background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
                 border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
                 borderRadius: theme.radiusXl, padding: "8px 16px",
@@ -433,13 +482,13 @@ function NowPlaying() {
             </PanelSectionRow>
 
             {/* Mini Queue */}
-            {status?.queue && status.queue.length > 1 && (
+            {upNext.length > 0 && (
               <>
                 <PanelSectionRow>
                   <ButtonItem layout="below" onClick={() => Navigation.Navigate("/museck-queue")}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                       <span style={{ fontSize: "13px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Up Next</span>
-                      <span style={{ fontSize: "11px", fontWeight: "500", color: theme.primary }}>View All ({status.queue.length})</span>
+                      <span style={{ fontSize: "11px", fontWeight: "500", color: theme.primary }}>View All ({queueLength})</span>
                     </div>
                   </ButtonItem>
                 </PanelSectionRow>
@@ -449,15 +498,15 @@ function NowPlaying() {
                     background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
                     border: `1px solid ${theme.outline}22`,
                   }}>
-                    {status.queue.slice(status.queue_index + 1, status.queue_index + 5).map((qTrack, idx) => (
+                    {upNext.map((qTrack, idx) => (
                       <div key={`${qTrack.ratingKey}-${idx}`} style={{
                         display: "flex", alignItems: "center", gap: "12px",
                         padding: "10px 14px",
-                        borderBottom: idx < 3 ? `1px solid ${theme.outline}22` : "none",
+                        borderBottom: idx < upNext.length - 1 ? `1px solid ${theme.outline}22` : "none",
                         transition: theme.transition,
                       }}>
                         <span style={{ fontSize: "11px", color: theme.outline, width: "18px", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                          {status.queue_index + idx + 2}
+                          {(status?.queue_index ?? 0) + idx + 2}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: "13px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -710,8 +759,13 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
   const [status, setStatus] = useState<{ type: "none" | "success" | "error" | "info"; message: string }>({ type: "none", message: "" });
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  // Track the server ID (generated by backend on first save/test)
+  // Track the server ID (generated by backend on save)
   const [serverId, setServerId] = useState(existingServer?.id || "");
+  // Credentials obtained from a Jellyfin/Emby auth exchange
+  const [credentials, setCredentials] = useState<{ api_key?: string; user_id?: string }>({
+    api_key: existingServer?.api_key,
+    user_id: existingServer?.user_id,
+  });
   // Server discovery
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -725,13 +779,15 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     };
     if (serverType === "plex") {
       config.token = token;
-    } else if (serverType === "jellyfin" || serverType === "emby") {
-      config.username = username;
-      config.password = password;
-    } else if (serverType === "subsonic") {
+    } else {
+      // Jellyfin, Emby and Subsonic all authenticate with username/password
       config.username = username;
       config.password = password;
     }
+    // Carry forward the token exchanged during Jellyfin/Emby auth so saving an
+    // edit doesn't discard it. The backend drops these if credentials changed.
+    if (credentials.api_key) config.api_key = credentials.api_key;
+    if (credentials.user_id) config.user_id = credentials.user_id;
     return config;
   };
 
@@ -761,21 +817,17 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     setIsTesting(true);
     setStatus({ type: "info", message: "Testing..." });
     try {
-      // Save temporarily to test
-      const config = buildConfig();
-      const saveResult = await saveServer(config);
-      if (saveResult.success) {
-        // Store the generated ID so future saves/tests update the same entry
-        if (saveResult.id && saveResult.id !== serverId) {
-          setServerId(saveResult.id);
+      // Test without saving — a failed test shouldn't leave a broken server
+      // in the list (and potentially make it the active one).
+      const result = await testServerConfig(buildConfig());
+      if (result.success) {
+        setStatus({ type: "success", message: `Connected: ${result.server_name || "OK"}` });
+        if (!name && result.server_name) setName(result.server_name);
+        if (result.api_key || result.user_id) {
+          setCredentials({ api_key: result.api_key, user_id: result.user_id });
         }
-        const result = await testConnection(saveResult.id);
-        if (result.success) {
-          setStatus({ type: "success", message: `Connected: ${result.server_name || "OK"}` });
-          if (!name && result.server_name) setName(result.server_name);
-        } else {
-          setStatus({ type: "error", message: result.message || "Connection failed" });
-        }
+      } else {
+        setStatus({ type: "error", message: result.message || "Connection failed" });
       }
     } catch (e) {
       setStatus({ type: "error", message: "Test failed" });
@@ -1105,7 +1157,7 @@ function SearchPage() {
                 borderRadius: theme.radiusFull,
                 border: `3px solid ${theme.surfaceContainerHighest}`,
                 borderTopColor: theme.primary,
-                animation: "spin 1s linear infinite",
+                animation: "museck-spin 1s linear infinite",
               }} />
               Searching...
             </div>
@@ -1277,16 +1329,31 @@ function QueuePage() {
   const [upNextTracks, setUpNextTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Identifies the currently loaded window of the queue. The status poll runs
+  // every 5s, but the artwork below is base64-inlined by the backend — so only
+  // re-request it when the window actually moved, not on every tick.
+  const loadedWindowRef = useRef<string>("");
+
   useEffect(() => {
     const fetchQueue = async () => {
       try {
         const s = await getPlaybackStatus();
+        const total = s.queue_length || 0;
         setCurrentTrack(s.current_track);
         setCurrentIndex(s.queue_index);
-        setTotalTracks(s.queue?.length || 0);
-        if (s.queue_index >= 0 && s.queue && s.queue.length > s.queue_index + 1) {
-          const result = await getQueueWithImages(s.queue_index + 1, 30);
-          if (result.success) setUpNextTracks(result.tracks);
+        setTotalTracks(total);
+
+        // Include the track so swapping to a different queue of the same
+        // length at the same position still refreshes the list.
+        const windowKey = `${s.queue_index}:${total}:${s.current_track?.ratingKey ?? ""}`;
+        if (windowKey !== loadedWindowRef.current) {
+          loadedWindowRef.current = windowKey;
+          if (s.queue_index >= 0 && total > s.queue_index + 1) {
+            const result = await getQueueWithImages(s.queue_index + 1, 30);
+            if (result.success) setUpNextTracks(result.tracks);
+          } else {
+            setUpNextTracks([]);
+          }
         }
         setLoading(false);
       } catch (e) {
@@ -1444,10 +1511,18 @@ function Settings() {
   const [isTesting, setIsTesting] = useState(false);
   const [trackNotify, setTrackNotify] = useState(true);
 
+  // Settings rarely change, but this panel stays mounted while the user edits
+  // servers on the full-screen page — so keep polling, and skip the state
+  // update (and the re-render it causes) when nothing actually changed.
+  const lastSettingsRef = useRef<string>("");
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await getSettings();
+        const serialized = JSON.stringify(settings);
+        if (serialized === lastSettingsRef.current) return;
+        lastSettingsRef.current = serialized;
         setServers(settings.servers || []);
         setActiveId(settings.active_server_id || "");
         setTrackNotify(settings.notify_on_track_change !== false);
@@ -1712,6 +1787,8 @@ function stopTrackWatcher() {
 export default definePlugin(() => {
   console.log("Museck plugin loaded!");
 
+  injectGlobalStyles();
+
   routerHook.addRoute("/museck-settings", () => <ServerListPage />, { exact: true });
   routerHook.addRoute("/museck-add-server", () => <AddServerPage />, { exact: true });
   routerHook.addRoute("/museck-edit-server", () => <EditServerPage />, { exact: true });
@@ -1738,6 +1815,7 @@ export default definePlugin(() => {
       routerHook.removeRoute("/museck-search");
       routerHook.removeRoute("/museck-queue");
       stopTrackWatcher();
+      removeGlobalStyles();
     },
   };
 });

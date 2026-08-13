@@ -2,6 +2,10 @@
 node_modules/
 py_modules/
 
+# Python
+__pycache__/
+*.pyc
+
 # Build output
 dist/
 out/
