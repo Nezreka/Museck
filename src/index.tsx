@@ -9,6 +9,7 @@ import {
   SliderField,
   ToggleField,
   Focusable,
+  DialogButton,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect, useRef } from "react";
@@ -256,6 +257,51 @@ function removeGlobalStyles() {
   document.getElementById(STYLE_ELEMENT_ID)?.remove();
 }
 
+// DialogButton is Steam's real button primitive: it registers with gamepad
+// navigation, draws a focus ring and activates on A. A styled Focusable div
+// does none of that reliably, which is why the transport controls could not be
+// reached with a controller. Its default chrome has to be flattened to keep
+// the circular look.
+function circleButtonStyle(size: number, background: string, color: string): React.CSSProperties {
+  return {
+    width: `${size}px`,
+    height: `${size}px`,
+    minWidth: `${size}px`,
+    maxWidth: `${size}px`,
+    padding: 0,
+    margin: 0,
+    border: "none",
+    borderRadius: theme.radiusFull,
+    background,
+    color,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: theme.transition,
+  };
+}
+
+function chipButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    minWidth: "0",
+    width: "auto",
+    padding: "8px 16px",
+    margin: 0,
+    background: active ? theme.primaryContainer : theme.surfaceContainer,
+    border: `1px solid ${active ? theme.primary + "44" : theme.outline + "44"}`,
+    borderRadius: theme.radiusXl,
+    color: active ? theme.primary : theme.onSurfaceVariant,
+    fontSize: "12px",
+    fontWeight: "500",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    transition: theme.transition,
+  };
+}
+
 // =============================================================================
 // Now Playing Component
 // =============================================================================
@@ -421,61 +467,72 @@ function NowPlaying() {
                 //@ts-ignore
                 flow-children="horizontal"
               >
-                <Focusable className="museck-ctl" onActivate={handlePrevious} style={{
-                  background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
-                  width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", color: theme.onSurface, transition: theme.transition,
-                  boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
-                }}>
+                <DialogButton
+                  className="museck-ctl"
+                  focusable={true}
+                  onClick={handlePrevious}
+                  onOKActionDescription="Previous"
+                  style={{
+                    ...circleButtonStyle(48, theme.surfaceContainerHigh, theme.onSurface),
+                    boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
+                  }}
+                >
                   <FaStepBackward style={{ fontSize: "16px" }} />
-                </Focusable>
-                <Focusable className="museck-ctl" onActivate={handlePlayPause} style={{
-                  background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
-                  border: "none", borderRadius: theme.radiusFull,
-                  width: "64px", height: "64px", display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", color: theme.onPrimary, transition: theme.transition,
-                  boxShadow: `0 4px 20px ${theme.primary}55, 0 2px 8px rgba(0,0,0,0.3)`,
-                }}>
+                </DialogButton>
+                <DialogButton
+                  className="museck-ctl"
+                  focusable={true}
+                  onClick={handlePlayPause}
+                  onOKActionDescription={isPlaying ? "Pause" : "Play"}
+                  style={{
+                    ...circleButtonStyle(64, `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`, theme.onPrimary),
+                    boxShadow: `0 4px 20px ${theme.primary}55, 0 2px 8px rgba(0,0,0,0.3)`,
+                  }}
+                >
                   {isPlaying ? <FaPause style={{ fontSize: "24px" }} /> : <FaPlay style={{ fontSize: "24px", marginLeft: "4px" }} />}
-                </Focusable>
-                <Focusable className="museck-ctl" onActivate={handleNext} style={{
-                  background: theme.surfaceContainerHigh, border: "none", borderRadius: theme.radiusFull,
-                  width: "48px", height: "48px", display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", color: theme.onSurface, transition: theme.transition,
-                  boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
-                }}>
+                </DialogButton>
+                <DialogButton
+                  className="museck-ctl"
+                  focusable={true}
+                  onClick={handleNext}
+                  onOKActionDescription="Next"
+                  style={{
+                    ...circleButtonStyle(48, theme.surfaceContainerHigh, theme.onSurface),
+                    boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
+                  }}
+                >
                   <FaStepForward style={{ fontSize: "16px" }} />
-                </Focusable>
+                </DialogButton>
               </Focusable>
             </PanelSectionRow>
 
             {/* Shuffle & Loop */}
-            <Focusable style={{ display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0" }}
-              //@ts-ignore
-              flow-children="horizontal"
-            >
-              <Focusable className="museck-chip" onActivate={handleShuffle} style={{
-                background: shuffleOn ? theme.primaryContainer : theme.surfaceContainer,
-                border: `1px solid ${shuffleOn ? theme.primary + "44" : theme.outline + "44"}`,
-                borderRadius: theme.radiusXl, padding: "8px 16px",
-                display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                color: shuffleOn ? theme.primary : theme.onSurfaceVariant,
-                fontSize: "12px", fontWeight: "500", transition: theme.transition,
-              }}>
-                <FaRandom style={{ fontSize: "12px" }} /> Shuffle
+            <PanelSectionRow>
+              <Focusable style={{ display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0", width: "100%" }}
+                //@ts-ignore
+                flow-children="horizontal"
+              >
+                <DialogButton
+                  className="museck-chip"
+                  focusable={true}
+                  onClick={handleShuffle}
+                  onOKActionDescription={shuffleOn ? "Turn shuffle off" : "Turn shuffle on"}
+                  style={chipButtonStyle(shuffleOn)}
+                >
+                  <FaRandom style={{ fontSize: "12px" }} /> Shuffle
+                </DialogButton>
+                <DialogButton
+                  className="museck-chip"
+                  focusable={true}
+                  onClick={handleLoop}
+                  onOKActionDescription="Change repeat mode"
+                  style={chipButtonStyle(loopMode !== "off")}
+                >
+                  <FaRedo style={{ fontSize: "12px" }} />
+                  {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
+                </DialogButton>
               </Focusable>
-              <Focusable className="museck-chip" onActivate={handleLoop} style={{
-                background: loopMode !== "off" ? theme.primaryContainer : theme.surfaceContainer,
-                border: `1px solid ${loopMode !== "off" ? theme.primary + "44" : theme.outline + "44"}`,
-                borderRadius: theme.radiusXl, padding: "8px 16px",
-                display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
-                color: loopMode !== "off" ? theme.primary : theme.onSurfaceVariant,
-                fontSize: "12px", fontWeight: "500", transition: theme.transition,
-              }}>
-                <FaRedo style={{ fontSize: "12px" }} />
-                {loopMode === "off" ? "Loop" : loopMode === "queue" ? "All" : "One"}
-              </Focusable>
-            </Focusable>
+            </PanelSectionRow>
 
             {/* Volume */}
             <PanelSectionRow>
