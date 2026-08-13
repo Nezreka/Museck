@@ -4,6 +4,7 @@ import socket
 import asyncio
 import functools
 import random
+import shutil
 import signal
 import subprocess
 import time
@@ -881,7 +882,8 @@ class Plugin:
         "queue": [],
         "queue_index": -1,
         "shuffle": False,
-        "loop": "off"
+        "loop": "off",
+        "last_error": None
     }
 
     # Original queue order (for unshuffle)
@@ -1215,7 +1217,62 @@ class Plugin:
         env["XDG_RUNTIME_DIR"] = "/run/user/1000"
         env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
         env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
+
+        # Decky ships as a PyInstaller bundle, so plugins inherit
+        # LD_LIBRARY_PATH pointing at its unpacked libs (/tmp/_MEIxxxxxx).
+        # Handing that to a system binary makes it load Decky's bundled libssl
+        # instead of the system one; where the two disagree (Bazzite: libcurl
+        # wants OPENSSL_3.2.0) ffplay dies on startup. Every track then "plays"
+        # for zero seconds, which looks like the player skipping through the
+        # whole library. PyInstaller preserves any pre-existing value in
+        # <VAR>_ORIG, so restore that when present and otherwise drop the var.
+        for var in ("LD_LIBRARY_PATH", "LD_PRELOAD"):
+            original = env.pop(f"{var}_ORIG", None)
+            if original:
+                env[var] = original
+            else:
+                env.pop(var, None)
         return env
+
+    @staticmethod
+    def _find_ffplay() -> str:
+        """Locate ffplay, falling back to PATH for non-SteamOS distros."""
+        for candidate in ("/usr/bin/ffplay", "/bin/ffplay", "/usr/local/bin/ffplay"):
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+        return shutil.which("ffplay") or ""
+
+    def _read_ffplay_log(self, max_lines: int = 10) -> str:
+        try:
+            log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
+            with open(log_path, "r") as f:
+                return "".join(f.readlines()[-max_lines:]).strip()
+        except Exception:
+            return ""
+
+    async def _handle_playback_failure(self, reason: str):
+        """Count a failed track, and stop auto-advancing after three in a row.
+
+        Without the cutoff a track that can't play makes the queue race to the
+        end. The reason is stored so the UI can say why, rather than leaving
+        the user watching tracks flick past in silence.
+        """
+        log_tail = self._read_ffplay_log()
+        self._consecutive_failures += 1
+        decky.logger.warning(f"{reason} (consecutive failures: {self._consecutive_failures})")
+        if log_tail:
+            decky.logger.error(f"ffplay log: {log_tail}")
+
+        if self._consecutive_failures >= 3:
+            self._consecutive_failures = 0
+            detail = log_tail.splitlines()[-1].strip() if log_tail else ""
+            self.playback_state["last_error"] = (
+                f"Playback failed: {detail[:160]}" if detail
+                else "Playback failed: the player exited immediately."
+            )
+            decky.logger.warning("Stopping auto-advance: 3 consecutive playback failures")
+            return
+        await self._auto_next()
 
     async def _delayed_volume_set(self, pid: int, volume: int):
         for _ in range(10):
@@ -1250,6 +1307,13 @@ class Plugin:
         # Kill existing player
         await self.stop()
 
+        ffplay = self._find_ffplay()
+        if not ffplay:
+            message = "ffplay not found — install ffmpeg to play audio"
+            decky.logger.error(message)
+            self.playback_state["last_error"] = message
+            return {"success": False, "message": message}
+
         try:
             log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
             env = self._get_audio_env()
@@ -1258,7 +1322,7 @@ class Plugin:
             # as soon as the process is spawned.
             with open(log_path, "w") as log_file:
                 self.player_process = subprocess.Popen([
-                    "/usr/bin/ffplay",
+                    ffplay,
                     "-nodisp",
                     "-autoexit",
                     "-loglevel", "warning",
@@ -1280,30 +1344,12 @@ class Plugin:
                 exit_code = self.player_process.returncode
                 self.player_process = None
                 self.playback_state["is_playing"] = False
-                decky.logger.error(
-                    f"ffplay exited immediately with code {exit_code} "
-                    f"for stream: {track_key}"
+                await self._handle_playback_failure(
+                    f"ffplay exited immediately with code {exit_code} for stream: {track_key}"
                 )
-                try:
-                    log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
-                    with open(log_path, "r") as f:
-                        lines = f.readlines()[-10:]
-                        if lines:
-                            decky.logger.error(f"ffplay log: {''.join(lines).strip()}")
-                except Exception:
-                    pass
-                self._consecutive_failures += 1
-                decky.logger.warning(
-                    f"Consecutive failures: {self._consecutive_failures}"
-                )
-                if self._consecutive_failures >= 3:
-                    decky.logger.warning(
-                        "Stopping auto-advance: 3 consecutive playback failures"
-                    )
-                    self._consecutive_failures = 0
-                else:
-                    await self._auto_next()
                 return {"success": False, "message": f"ffplay exited immediately (code {exit_code})"}
+
+            self.playback_state["last_error"] = None
 
             asyncio.create_task(self._delayed_volume_set(self.player_process.pid, self.playback_state["volume"]))
 
@@ -1454,29 +1500,9 @@ class Plugin:
                 self.playback_state["is_playing"] = False
 
                 if is_failure:
-                    self._consecutive_failures += 1
-                    decky.logger.warning(
-                        f"Track playback failed: exit code={poll}, "
-                        f"elapsed={elapsed:.1f}s, "
-                        f"consecutive failures={self._consecutive_failures}"
+                    await self._handle_playback_failure(
+                        f"Track playback failed: exit code={poll}, elapsed={elapsed:.1f}s"
                     )
-                    # Log ffplay output for debugging
-                    try:
-                        log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
-                        with open(log_path, "r") as f:
-                            lines = f.readlines()[-10:]
-                            if lines:
-                                decky.logger.warning(f"ffplay log: {''.join(lines).strip()}")
-                    except Exception:
-                        pass
-
-                    if self._consecutive_failures >= 3:
-                        decky.logger.warning(
-                            "Stopping auto-advance: 3 consecutive playback failures"
-                        )
-                        self._consecutive_failures = 0
-                    else:
-                        await self._auto_next()
                 else:
                     self._consecutive_failures = 0
                     await self._auto_next()

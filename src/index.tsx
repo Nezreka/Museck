@@ -103,6 +103,7 @@ interface PlaybackStatus {
   queue_index: number;
   shuffle: boolean;
   loop: "off" | "queue" | "single";
+  last_error: string | null;
 }
 
 interface Playlist {
@@ -1739,6 +1740,7 @@ function Content() {
 let lastTrackKey: string | null = null;
 let watcherInterval: ReturnType<typeof setInterval> | null = null;
 let notifyOnTrackChange = true;
+let lastErrorShown: string | null = null;
 
 async function startTrackWatcher() {
   console.log("Museck: Starting track watcher");
@@ -1747,6 +1749,22 @@ async function startTrackWatcher() {
     try {
       const status = await getPlaybackStatus();
       const track = status.current_track;
+
+      // Playback errors always surface, independent of the track-change
+      // notification preference — otherwise a queue that can't play just
+      // stops with no explanation.
+      if (status.last_error && status.last_error !== lastErrorShown) {
+        lastErrorShown = status.last_error;
+        toaster.toast({
+          title: "Museck",
+          body: status.last_error,
+          duration: 8000,
+          icon: <FaMusic />,
+        });
+        console.error(`Museck: ${status.last_error}`);
+      } else if (!status.last_error) {
+        lastErrorShown = null;
+      }
 
       if (track && track.ratingKey !== lastTrackKey) {
         lastTrackKey = track.ratingKey;
@@ -1777,6 +1795,7 @@ function stopTrackWatcher() {
     watcherInterval = null;
   }
   lastTrackKey = null;
+  lastErrorShown = null;
   console.log("Museck: Track watcher stopped");
 }
 
