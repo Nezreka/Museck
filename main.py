@@ -4,6 +4,7 @@ import socket
 import asyncio
 import functools
 import random
+import re
 import shutil
 import signal
 import subprocess
@@ -288,6 +289,32 @@ class PlexService(MusicService):
     # unresolved tracks are looked up in batches rather than one request each.
     _RESOLVE_BATCH = 50
 
+    _DISC_DIR = re.compile(r"^(cd|disc|disk)\s*\d+$", re.IGNORECASE)
+
+    @classmethod
+    def _from_file_path(cls, file_path: str):
+        """Derive (artist, album) from a media path.
+
+        Files Plex has indexed but never matched still play, yet come back with
+        no artist, album or artwork — so they show as Unknown even though the
+        path on disk names them. Assumes the usual .../artist/album/[CD1]/track
+        layout, and only when there is enough depth to be confident.
+        """
+        if not file_path:
+            return "", ""
+        segments = [p for p in file_path.replace("\\", "/").split("/") if p]
+        dirs = segments[:-1]
+        if dirs and cls._DISC_DIR.match(dirs[-1]):
+            dirs = dirs[:-1]
+        # Need a mount/root plus artist plus album before guessing
+        if len(dirs) < 3:
+            return "", ""
+        artist, album = dirs[-2], dirs[-1]
+        # Folders are often named "Artist - Album"; drop the redundant prefix
+        if album.lower().startswith(artist.lower() + " - "):
+            album = album[len(artist) + 3:]
+        return artist, album
+
     def _parse_tracks(self, metadata: list) -> list:
         tracks = []
         unresolved = []
@@ -298,13 +325,22 @@ class PlexService(MusicService):
             part = parts_list[0] if parts_list else {}
             stream_key = part.get("key", "")
 
-            thumb_path = track.get("thumb", "") or track.get("parentThumb", "")
+            thumb_path = track.get("thumb") or track.get("parentThumb") or ""
+            # `or` rather than a get() default: Plex sends these keys as null
+            # for unmatched files, which a default would not catch.
+            artist = track.get("grandparentTitle") or track.get("originalTitle") or ""
+            album = track.get("parentTitle") or ""
+            if not artist or not album:
+                path_artist, path_album = self._from_file_path(part.get("file", ""))
+                artist = artist or path_artist
+                album = album or path_album
+
             entry = {
                 "key": stream_key,
                 "ratingKey": track.get("ratingKey"),
-                "title": track.get("title", "Unknown"),
-                "artist": track.get("grandparentTitle", track.get("originalTitle", "Unknown")),
-                "album": track.get("parentTitle", "Unknown"),
+                "title": track.get("title") or "Unknown",
+                "artist": artist or "Unknown",
+                "album": album or "Unknown",
                 "duration": track.get("duration", 0),
                 "index": track.get("index", 0),
                 "thumb": thumb_path,
