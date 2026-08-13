@@ -163,13 +163,14 @@ const setVolume = callable<[number], { success: boolean; volume: number }>("set_
 
 // Music API (server-agnostic)
 const getPlaylists = callable<[], { success: boolean; playlists: Playlist[] }>("get_playlists");
-const getPlaylistTracks = callable<[string], { success: boolean; tracks: Track[] }>("get_playlist_tracks");
 const searchTracks = callable<[string], { success: boolean; results: Track[] }>("search");
 const searchAlbums = callable<[string], { success: boolean; albums: Album[] }>("search_albums");
 const searchArtists = callable<[string], { success: boolean; artists: Artist[] }>("search_artists");
-const getAlbumTracks = callable<[string], { success: boolean; tracks: Track[] }>("get_album_tracks");
-const getArtistTracks = callable<[string], { success: boolean; tracks: Track[] }>("get_artist_tracks");
 const playQueueIndex = callable<[number], { success: boolean; message?: string }>("play_queue_index");
+type PlayResult = { success: boolean; message?: string; count?: number; truncated?: boolean };
+const playPlaylist = callable<[string], PlayResult>("play_playlist");
+const playAlbum = callable<[string], PlayResult>("play_album");
+const playArtist = callable<[string], PlayResult>("play_artist");
 const getQueueWithImages = callable<[number, number], { success: boolean; tracks: Track[]; total: number; current_index: number }>("get_queue_with_images");
 
 // =============================================================================
@@ -672,9 +673,15 @@ function NowPlaying() {
   const handlePrevious = async () => { await previousTrack(); };
 
   const handlePlayPlaylist = async (playlist: Playlist) => {
-    const result = await getPlaylistTracks(playlist.key);
-    if (result.success && result.tracks.length > 0) {
-      await setQueue(result.tracks, 0);
+    const result = await playPlaylist(playlist.key);
+    if (!result.success) {
+      toaster.toast({ title: "Museck", body: result.message || "Could not play playlist", icon: <FaMusic /> });
+    } else if (result.truncated) {
+      toaster.toast({
+        title: playlist.title,
+        body: `Queued the first ${result.count} tracks`,
+        icon: <FaMusic />,
+      });
     }
   };
 
@@ -1482,19 +1489,13 @@ function SearchPage() {
   };
 
   const handlePlayAlbum = async (album: Album) => {
-    const result = await getAlbumTracks(album.key);
-    if (result.success && result.tracks.length > 0) {
-      await setQueue(result.tracks, 0);
-      returnToPanel();
-    }
+    const result = await playAlbum(album.key);
+    if (result.success) returnToPanel();
   };
 
   const handlePlayArtist = async (artist: Artist) => {
-    const result = await getArtistTracks(artist.key);
-    if (result.success && result.tracks.length > 0) {
-      await setQueue(result.tracks, 0);
-      returnToPanel();
-    }
+    const result = await playArtist(artist.key);
+    if (result.success) returnToPanel();
   };
 
   return (

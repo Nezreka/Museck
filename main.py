@@ -17,6 +17,12 @@ import urllib.error
 import urllib.parse
 
 
+# Upper bound on how many tracks a single playlist/artist load will queue.
+# Smart playlists can cover an entire library (a real one seen at 307k tracks),
+# which no amount of patience will transfer, let alone queue.
+MAX_QUEUE_TRACKS = 2000
+
+
 async def _to_thread(func, *args, **kwargs):
     """Run a blocking callable off the event loop.
 
@@ -105,8 +111,36 @@ class PlexService(MusicService):
         sep = "&" if "?" in url else "?"
         return f"{url}{sep}X-Plex-Token={self.token}"
 
-    def _api_get(self, endpoint: str) -> dict:
-        return self._http_json(self._api_url(endpoint), {"Accept": "application/json"})
+    def _api_get(self, endpoint: str, timeout: int = 10) -> dict:
+        return self._http_json(self._api_url(endpoint), {"Accept": "application/json"}, timeout)
+
+    def _paged_tracks(self, endpoint: str, limit: int = MAX_QUEUE_TRACKS) -> list:
+        """Fetch playlist/album items a page at a time.
+
+        Plex serialises the entire collection when asked for it unpaginated, so
+        a large smart playlist simply times out and the caller sees an empty
+        list — the playlist appears to do nothing when selected. Ask for
+        bounded pages instead, and stop once enough tracks are collected.
+        """
+        tracks = []
+        page_size = 200
+        start = 0
+        while len(tracks) < limit:
+            sep = "&" if "?" in endpoint else "?"
+            page = self._api_get(
+                f"{endpoint}{sep}X-Plex-Container-Start={start}&X-Plex-Container-Size={page_size}",
+                timeout=20,
+            )
+            metadata = page.get("MediaContainer", {}).get("Metadata") or []
+            if not metadata:
+                break
+            tracks.extend(self._parse_tracks(metadata))
+            # Advance by items received, not tracks kept — unplayable entries
+            # are dropped by the parse but still occupy a slot in the source.
+            start += len(metadata)
+            if len(metadata) < page_size:
+                break
+        return tracks[:limit]
 
     def test_connection(self) -> dict:
         try:
@@ -181,10 +215,7 @@ class PlexService(MusicService):
         return playlists
 
     def get_playlist_tracks(self, playlist_key: str) -> list:
-        data = self._api_get(f"/playlists/{playlist_key}/items")
-        if not data:
-            return []
-        return self._parse_tracks(data.get("MediaContainer", {}).get("Metadata", []))
+        return self._paged_tracks(f"/playlists/{playlist_key}/items")
 
     def search_tracks(self, query: str) -> list:
         data = self._api_get(f"/search?type=10&query={urllib.parse.quote(query)}")
@@ -233,13 +264,12 @@ class PlexService(MusicService):
         all_tracks = []
         for album in albums_data.get("MediaContainer", {}).get("Metadata", []):
             album_key = album.get("ratingKey")
-            if album_key:
-                tracks_data = self._api_get(f"/library/metadata/{album_key}/children")
-                if tracks_data:
-                    all_tracks.extend(self._parse_tracks(
-                        tracks_data.get("MediaContainer", {}).get("Metadata", [])
-                    ))
-        return all_tracks
+            if not album_key:
+                continue
+            all_tracks.extend(self.get_album_tracks(album_key))
+            if len(all_tracks) >= MAX_QUEUE_TRACKS:
+                break
+        return all_tracks[:MAX_QUEUE_TRACKS]
 
     def get_stream_url(self, track_key: str) -> str:
         return f"{self.server_url}{track_key}?X-Plex-Token={self.token}"
@@ -463,6 +493,7 @@ class JellyfinService(MusicService):
         data = self._api_get(f"/Playlists/{playlist_key}/Items", {
             "UserId": self.user_id,
             "Fields": "MediaSources",
+            "Limit": str(MAX_QUEUE_TRACKS),
         })
         return [self._parse_track(item) for item in data.get("Items", [])]
 
@@ -529,6 +560,7 @@ class JellyfinService(MusicService):
             "Recursive": "true",
             "Fields": "MediaSources",
             "SortBy": "Album,IndexNumber",
+            "Limit": str(MAX_QUEUE_TRACKS),
         })
         return [self._parse_track(item) for item in data.get("Items", [])]
 
@@ -726,7 +758,7 @@ class SubsonicService(MusicService):
         entries = resp.get("playlist", {}).get("entry", [])
         if isinstance(entries, dict):
             entries = [entries]
-        return [self._parse_track(s) for s in entries]
+        return [self._parse_track(s) for s in entries[:MAX_QUEUE_TRACKS]]
 
     def search_tracks(self, query: str) -> list:
         resp = self._api_get("search3", {
@@ -801,7 +833,9 @@ class SubsonicService(MusicService):
                 if isinstance(songs, dict):
                     songs = [songs]
                 all_tracks.extend([self._parse_track(s) for s in songs])
-        return all_tracks
+                if len(all_tracks) >= MAX_QUEUE_TRACKS:
+                    break
+        return all_tracks[:MAX_QUEUE_TRACKS]
 
     def get_stream_url(self, track_key: str) -> str:
         params = self._auth_params()
@@ -1552,8 +1586,45 @@ class Plugin:
     # Queue Management
     # =========================================================================
 
+    async def _play_collection(self, fetch, label: str):
+        """Load a collection and start it, without routing it via the UI.
+
+        The frontend used to fetch every track, then send the whole list back
+        to be queued. For a large playlist that is megabytes across the bridge
+        twice, for data the backend already had.
+        """
+        if not self.current_service:
+            return {"success": False, "message": "No server configured"}
+        try:
+            tracks = await _to_thread(fetch)
+        except Exception as e:
+            decky.logger.error(f"Failed to load {label}: {e}")
+            return {"success": False, "message": f"Could not load this {label}"}
+
+        if not tracks:
+            return {"success": False, "message": f"No playable tracks in this {label}"}
+
+        result = await self.set_queue(tracks, 0)
+        result["count"] = len(tracks)
+        result["truncated"] = len(tracks) >= MAX_QUEUE_TRACKS
+        if result["truncated"]:
+            decky.logger.warning(f"{label} truncated to {MAX_QUEUE_TRACKS} tracks")
+        return result
+
+    async def play_playlist(self, playlist_key: str):
+        return await self._play_collection(
+            lambda: self.current_service.get_playlist_tracks(playlist_key), "playlist")
+
+    async def play_album(self, album_key: str):
+        return await self._play_collection(
+            lambda: self.current_service.get_album_tracks(album_key), "album")
+
+    async def play_artist(self, artist_key: str):
+        return await self._play_collection(
+            lambda: self.current_service.get_artist_tracks(artist_key), "artist")
+
     async def set_queue(self, tracks: list, start_index: int = 0):
-        tracks = list(tracks or [])
+        tracks = list(tracks or [])[:MAX_QUEUE_TRACKS]
         if not tracks or not (0 <= start_index < len(tracks)):
             return {"success": False, "message": "Invalid queue or index"}
 
