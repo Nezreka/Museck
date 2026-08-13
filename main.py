@@ -1700,9 +1700,14 @@ class Plugin:
     async def get_playlists(self):
         if not self.current_service:
             return {"success": False, "playlists": []}
+
+        def run():
+            # Hydrate covers so the list can show real art instead of a
+            # placeholder icon; repeat calls come from the image cache.
+            return self._hydrate_thumbs(self.current_service.get_playlists(), 25)
+
         try:
-            playlists = await _to_thread(self.current_service.get_playlists)
-            return {"success": True, "playlists": playlists}
+            return {"success": True, "playlists": await _to_thread(run)}
         except Exception as e:
             decky.logger.error(f"get_playlists error: {e}")
             return {"success": False, "playlists": []}

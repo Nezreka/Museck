@@ -10,6 +10,7 @@ import {
   ToggleField,
   Focusable,
   DialogButton,
+  Marquee,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect, useRef } from "react";
@@ -30,6 +31,8 @@ import {
   FaTrash,
   FaCheck,
   FaExchangeAlt,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 
 // =============================================================================
@@ -92,6 +95,10 @@ interface QueuePreviewItem {
   title: string;
   artist: string;
 }
+
+// An up-next row renders from either shape: the trimmed preview or a full
+// Track once its artwork has been fetched.
+type UpNextItem = QueuePreviewItem & { thumb?: string };
 
 interface PlaybackStatus {
   is_playing: boolean;
@@ -197,29 +204,48 @@ let editServerConfig: ServerConfig | null = null;
 // =============================================================================
 
 const theme = {
-  surface: "#16161e",
-  surfaceContainer: "#1e1e2a",
-  surfaceContainerHigh: "#262636",
-  surfaceContainerHighest: "#2e2e42",
+  surface: "#131318",
+  surfaceContainer: "#1b1b24",
+  surfaceContainerHigh: "#23232f",
+  surfaceContainerHighest: "#2c2c3b",
   primary: "#1ed760",
-  primaryContainer: "#1a3d2a",
-  onPrimary: "#000000",
+  primaryDim: "#19b84d",
+  primaryContainer: "#14351f",
+  onPrimary: "#06140b",
   secondary: "#b4b4c4",
-  secondaryContainer: "#3d3d52",
-  onSurface: "#e8e8ee",
-  onSurfaceVariant: "#9898a8",
-  outline: "#48485a",
+  secondaryContainer: "#33334a",
+  onSurface: "#f1f1f6",
+  onSurfaceVariant: "#9a9aac",
+  outline: "#43435a",
   error: "#ff6b6b",
-  errorContainer: "#4a2020",
+  errorContainer: "#3f1d1d",
   success: "#4ade80",
-  successContainer: "#1a4a2a",
-  radiusSm: "12px",
-  radiusMd: "16px",
+  successContainer: "#163d27",
+  radiusSm: "10px",
+  radiusMd: "14px",
   radiusLg: "20px",
   radiusXl: "28px",
   radiusFull: "9999px",
   transition: "all 0.2s cubic-bezier(0.2, 0, 0, 1)",
   transitionSlow: "all 0.3s cubic-bezier(0.2, 0, 0, 1)",
+};
+
+// One type scale for the whole plugin, so a title in the panel and a title on
+// a page are the same thing rather than two similar guesses.
+const type = {
+  hero: { fontSize: "17px", fontWeight: "600", letterSpacing: "-0.3px" } as React.CSSProperties,
+  pageTitle: { fontSize: "20px", fontWeight: "700", letterSpacing: "-0.4px" } as React.CSSProperties,
+  title: { fontSize: "14px", fontWeight: "600" } as React.CSSProperties,
+  body: { fontSize: "13px", fontWeight: "500" } as React.CSSProperties,
+  meta: { fontSize: "11px", fontWeight: "500" } as React.CSSProperties,
+  label: {
+    fontSize: "11px", fontWeight: "700",
+    letterSpacing: "0.8px", textTransform: "uppercase",
+  } as React.CSSProperties,
+};
+
+const ellipsis: React.CSSProperties = {
+  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
 };
 
 // Focusable renders a plain div, so gamepad focus produces no visual change on
@@ -232,7 +258,7 @@ const GLOBAL_STYLES = `
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-.museck-ctl, .museck-chip { outline: none; }
+.museck-ctl, .museck-chip, .museck-row { outline: none; }
 .museck-ctl:focus, .museck-ctl.gpfocus {
   transform: scale(1.12);
   filter: brightness(1.2);
@@ -240,8 +266,12 @@ const GLOBAL_STYLES = `
 }
 .museck-chip:focus, .museck-chip.gpfocus {
   border-color: ${theme.primary} !important;
+  filter: brightness(1.2);
+}
+.museck-row:focus, .museck-row.gpfocus {
   background: ${theme.surfaceContainerHigh} !important;
-  filter: brightness(1.15);
+  border-color: ${theme.primary}88 !important;
+  transform: translateX(2px);
 }
 `;
 
@@ -282,6 +312,250 @@ function circleButtonStyle(size: number, background: string, color: string): Rea
   };
 }
 
+// =============================================================================
+// Shared UI primitives
+// =============================================================================
+
+/** Square cover art with a placeholder underneath, so a slow or broken image
+ *  degrades to an icon rather than an empty hole. */
+function Art({ src, size, radius, iconSize, elevated }: {
+  src?: string; size: number | string; radius?: string; iconSize?: number; elevated?: boolean;
+}) {
+  return (
+    <div style={{
+      width: typeof size === "number" ? `${size}px` : size,
+      height: typeof size === "number" ? `${size}px` : size,
+      borderRadius: radius || theme.radiusSm,
+      background: `linear-gradient(135deg, ${theme.surfaceContainerHighest} 0%, ${theme.surfaceContainer} 100%)`,
+      overflow: "hidden", flexShrink: 0, position: "relative",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      boxShadow: elevated
+        ? `0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px ${theme.outline}33`
+        : `0 2px 8px rgba(0,0,0,0.25)`,
+    }}>
+      <FaMusic style={{ fontSize: `${iconSize || 18}px`, color: theme.outline }} />
+      {src ? (
+        <img
+          src={src}
+          style={{
+            position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
+            objectFit: "cover",
+          }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SectionLabel({ children, trailing }: { children: React.ReactNode; trailing?: React.ReactNode }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      width: "100%", padding: "2px 2px 6px",
+    }}>
+      <span style={{ ...type.label, color: theme.onSurfaceVariant }}>{children}</span>
+      {trailing}
+    </div>
+  );
+}
+
+/** A full-width list row. DialogButton keeps it controller-focusable while
+ *  letting the row look like a list item rather than a Steam button. */
+function RowButton({ onClick, children, actionDescription, accent }: {
+  onClick: () => void; children: React.ReactNode; actionDescription?: string; accent?: string;
+}) {
+  return (
+    <DialogButton
+      className="museck-row"
+      focusable={true}
+      onClick={onClick}
+      onOKActionDescription={actionDescription}
+      style={{
+        width: "100%", minWidth: 0, margin: 0, padding: "10px 12px",
+        background: theme.surfaceContainer,
+        border: `1px solid ${accent ? accent + "55" : theme.outline + "22"}`,
+        borderRadius: theme.radiusMd,
+        display: "flex", alignItems: "center", gap: "12px",
+        textAlign: "left", color: theme.onSurface,
+        transition: theme.transition,
+      }}
+    >
+      {children}
+    </DialogButton>
+  );
+}
+
+/** Title + subtitle pair that truncates instead of wrapping the row. */
+function RowText({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+      <div style={{ ...type.body, color: theme.onSurface, ...ellipsis }}>{title}</div>
+      {subtitle ? (
+        <div style={{ ...type.meta, color: theme.onSurfaceVariant, marginTop: "2px", ...ellipsis }}>
+          {subtitle}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Badge({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <span style={{
+      fontSize: "9px", fontWeight: "700", letterSpacing: "0.5px",
+      color, background: color + "22", border: `1px solid ${color}33`,
+      padding: "3px 8px", borderRadius: theme.radiusFull,
+      flexShrink: 0, whiteSpace: "nowrap",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+/** Segmented control. Reads as one grouped switch instead of a stack of
+ *  full-width buttons, and keeps left/right navigation between the segments. */
+function SegmentedTabs<T extends string>({ value, options, onChange }: {
+  value: T;
+  options: { value: T; label: string; icon: React.ReactNode }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <Focusable
+      style={{
+        display: "flex", gap: "4px", width: "100%", padding: "4px",
+        background: theme.surfaceContainer,
+        border: `1px solid ${theme.outline}22`,
+        borderRadius: theme.radiusFull,
+      }}
+      //@ts-ignore
+      flow-children="horizontal"
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <DialogButton
+            key={option.value}
+            className="museck-chip"
+            focusable={true}
+            onClick={() => onChange(option.value)}
+            onOKActionDescription={option.label}
+            style={{
+              flex: 1, minWidth: 0, width: "auto", margin: 0, padding: "7px 10px",
+              background: active ? theme.primary : "transparent",
+              color: active ? theme.onPrimary : theme.onSurfaceVariant,
+              border: "none", borderRadius: theme.radiusFull,
+              fontSize: "13px", fontWeight: active ? "700" : "500",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
+              boxShadow: active ? `0 2px 10px ${theme.primary}55` : "none",
+              transition: theme.transition,
+            }}
+          >
+            {option.icon}
+            {option.label}
+          </DialogButton>
+        );
+      })}
+    </Focusable>
+  );
+}
+
+function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
+  return (
+    <div style={{
+      textAlign: "center", padding: "40px 20px", width: "100%",
+      background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
+      borderRadius: theme.radiusLg,
+    }}>
+      <div style={{ fontSize: "40px", color: theme.outline, opacity: 0.35, marginBottom: "12px" }}>
+        {icon}
+      </div>
+      <div style={{ ...type.title, color: theme.onSurfaceVariant }}>{title}</div>
+      {subtitle ? (
+        <div style={{ ...type.meta, color: theme.outline, marginTop: "6px" }}>{subtitle}</div>
+      ) : null}
+    </div>
+  );
+}
+
+type StatusKind = "none" | "success" | "error" | "info";
+
+function StatusBanner({ kind, message }: { kind: StatusKind; message: string }) {
+  if (kind === "none") return null;
+  const palette = {
+    success: { bg: theme.successContainer, fg: theme.success },
+    info: { bg: theme.secondaryContainer, fg: theme.secondary },
+    error: { bg: theme.errorContainer, fg: theme.error },
+  }[kind as "success" | "info" | "error"];
+  return (
+    <div style={{
+      width: "100%", padding: "11px 14px", borderRadius: theme.radiusMd,
+      background: palette.bg, color: palette.fg,
+      border: `1px solid ${palette.fg}33`,
+      textAlign: "center", ...type.body,
+    }}>
+      {message}
+    </div>
+  );
+}
+
+function Spinner({ size = 36 }: { size?: number }) {
+  return (
+    <div style={{
+      width: `${size}px`, height: `${size}px`, margin: "0 auto 14px",
+      borderRadius: theme.radiusFull,
+      border: `3px solid ${theme.surfaceContainerHighest}`,
+      borderTopColor: theme.primary,
+      animation: "museck-spin 0.9s linear infinite",
+    }} />
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div style={{ textAlign: "center", padding: "28px 16px", width: "100%", color: theme.onSurfaceVariant }}>
+      <Spinner />
+      <div style={type.body}>{label}</div>
+    </div>
+  );
+}
+
+/** Page header for the full-screen routes: title, optional subtitle, and a
+ *  Back control that is the first thing focus lands on. */
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <>
+      <PanelSectionRow>
+        <div style={{ width: "100%", padding: "2px 0 10px" }}>
+          <div style={{ ...type.pageTitle, color: theme.onSurface }}>{title}</div>
+          {subtitle ? (
+            <div style={{ ...type.body, color: theme.onSurfaceVariant, marginTop: "3px" }}>{subtitle}</div>
+          ) : null}
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <RowButton onClick={() => Navigation.NavigateBack()} actionDescription="Back">
+          <FaChevronLeft style={{ fontSize: "12px", color: theme.primary, flexShrink: 0 }} />
+          <span style={{ ...type.body, color: theme.onSurface }}>Back</span>
+        </RowButton>
+      </PanelSectionRow>
+    </>
+  );
+}
+
+/** Shared scroll container for the full-screen routes. */
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      marginTop: "40px", height: "calc(100% - 40px)",
+      overflowY: "auto", overflowX: "hidden", paddingBottom: "60px",
+    }}>
+      {children}
+      <div style={{ height: "80px" }} />
+    </div>
+  );
+}
+
 function chipButtonStyle(active: boolean): React.CSSProperties {
   return {
     minWidth: "0",
@@ -315,6 +589,10 @@ function NowPlaying() {
   // captured at its initial 0 and the grace period would never apply.
   const volumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVolumeInteractionRef = useRef(0);
+  // Up-next rows carry inlined cover art, so they are fetched only when the
+  // queue window moves rather than on every status tick.
+  const [upNextTracks, setUpNextTracks] = useState<Track[]>([]);
+  const upNextWindowRef = useRef("");
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -325,6 +603,17 @@ function NowPlaying() {
         // stopped dragging, so an in-progress drag isn't yanked back.
         if (s && Date.now() - lastVolumeInteractionRef.current > 2000) {
           setLocalVolume(null);
+        }
+
+        const windowKey = `${s.queue_index}:${s.queue_length}:${s.current_track?.ratingKey ?? ""}`;
+        if (windowKey !== upNextWindowRef.current) {
+          upNextWindowRef.current = windowKey;
+          if (s.queue_index >= 0 && s.queue_length > s.queue_index + 1) {
+            const res = await getQueueWithImages(s.queue_index + 1, 4);
+            if (res.success) setUpNextTracks(res.tracks);
+          } else {
+            setUpNextTracks([]);
+          }
         }
       } catch (e) {
         console.error("Failed to get playback status:", e);
@@ -385,78 +674,75 @@ function NowPlaying() {
   const volume = localVolume !== null ? localVolume : (status?.volume || 75);
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
   const queueLength = status?.queue_length || 0;
-  const upNext = (status?.queue_preview || []).slice(0, 4);
+  // Show the lightweight preview immediately, then swap in the art-bearing
+  // rows once they arrive, so the list never appears empty while loading.
+  const upNext: UpNextItem[] =
+    (upNextTracks.length ? upNextTracks : (status?.queue_preview || [])).slice(0, 4);
 
   return (
     <>
       <PanelSection title="Now Playing">
         {track ? (
           <>
-            {/* Album Art Card */}
+            {/* Hero album art */}
             <PanelSectionRow>
               <div style={{
-                background: `linear-gradient(135deg, ${theme.surfaceContainerHigh} 0%, ${theme.surfaceContainer} 100%)`,
-                borderRadius: theme.radiusLg,
-                padding: "16px",
-                display: "flex",
-                gap: "16px",
-                alignItems: "center",
-                boxShadow: `0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`,
-                transition: theme.transition,
+                width: "100%", display: "flex", flexDirection: "column",
+                alignItems: "center", padding: "4px 0 2px",
               }}>
-                <div style={{
-                  width: "72px", height: "72px",
-                  borderRadius: theme.radiusMd,
-                  backgroundColor: theme.surfaceContainerHighest,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0, overflow: "hidden", position: "relative",
-                  boxShadow: `0 8px 32px rgba(30, 215, 96, 0.15)`,
-                }}>
-                  <FaMusic style={{ fontSize: "28px", color: theme.outline, position: "absolute" }} />
-                  {(track.thumb || track.parentThumb) && (
-                    <img src={track.thumb || track.parentThumb} style={{
-                      width: "100%", height: "100%", objectFit: "cover",
-                      position: "relative", zIndex: 1, transition: theme.transition,
-                    }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: "600", fontSize: "15px", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "4px", letterSpacing: "-0.2px" }}>
-                    {track.title}
-                  </div>
-                  <div style={{ fontSize: "13px", color: theme.onSurfaceVariant, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {track.artist}
-                  </div>
-                  <div style={{ fontSize: "11px", color: theme.outline, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
-                    {track.album}
-                  </div>
+                <div style={{ width: "100%", maxWidth: "168px", aspectRatio: "1 / 1" }}>
+                  <Art
+                    src={track.thumb || track.parentThumb}
+                    size="100%"
+                    radius={theme.radiusLg}
+                    iconSize={44}
+                    elevated
+                  />
                 </div>
               </div>
             </PanelSectionRow>
 
-            {/* Progress Bar */}
+            {/* Track identity */}
             <PanelSectionRow>
-              <div style={{ width: "100%", padding: "4px 0" }}>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "12px",
-                  fontSize: "11px", color: theme.onSurfaceVariant,
-                  fontWeight: "500", fontVariantNumeric: "tabular-nums",
-                }}>
-                  <span style={{ width: "36px", textAlign: "right" }}>{formatTime(position)}</span>
-                  <div style={{
-                    flex: 1, height: "6px",
-                    backgroundColor: theme.surfaceContainerHighest,
-                    borderRadius: theme.radiusFull, overflow: "hidden", position: "relative",
-                  }}>
-                    <div style={{
-                      position: "absolute", width: `${progressPercent}%`, height: "100%",
-                      background: `linear-gradient(90deg, ${theme.primary}88 0%, ${theme.primary} 100%)`,
-                      borderRadius: theme.radiusFull,
-                      transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-                      boxShadow: `0 0 12px ${theme.primary}66`,
-                    }} />
+              <div style={{ width: "100%", textAlign: "center", padding: "2px 0 6px" }}>
+                <Marquee play={true} speed={26} delay={2} fadeLength={12} center={true}
+                  style={{ ...type.hero, color: theme.onSurface }}>
+                  {track.title}
+                </Marquee>
+                <div style={{ ...type.body, color: theme.onSurfaceVariant, marginTop: "3px", ...ellipsis }}>
+                  {track.artist}
+                </div>
+                {track.album ? (
+                  <div style={{ ...type.meta, color: theme.outline, marginTop: "2px", ...ellipsis }}>
+                    {track.album}
                   </div>
-                  <span style={{ width: "36px" }}>{formatTime(duration)}</span>
+                ) : null}
+              </div>
+            </PanelSectionRow>
+
+            {/* Progress */}
+            <PanelSectionRow>
+              <div style={{ width: "100%", padding: "2px 0 4px" }}>
+                <div style={{
+                  height: "5px", background: theme.surfaceContainerHighest,
+                  borderRadius: theme.radiusFull, overflow: "hidden", position: "relative",
+                }}>
+                  <div style={{
+                    position: "absolute", top: 0, left: 0,
+                    width: `${Math.min(100, Math.max(0, progressPercent))}%`, height: "100%",
+                    background: `linear-gradient(90deg, ${theme.primaryDim} 0%, ${theme.primary} 100%)`,
+                    borderRadius: theme.radiusFull,
+                    transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+                    boxShadow: `0 0 10px ${theme.primary}66`,
+                  }} />
+                </div>
+                <div style={{
+                  display: "flex", justifyContent: "space-between", marginTop: "6px",
+                  ...type.meta, color: theme.onSurfaceVariant,
+                  fontVariantNumeric: "tabular-nums",
+                }}>
+                  <span>{formatTime(position)}</span>
+                  <span>{formatTime(duration)}</span>
                 </div>
               </div>
             </PanelSectionRow>
@@ -539,70 +825,77 @@ function NowPlaying() {
               <SliderField label="Music Volume" description="" value={volume} min={0} max={100} step={1} showValue={true} onChange={handleVolumeChange} />
             </PanelSectionRow>
 
-            {/* Mini Queue */}
+            {/* Up next */}
             {upNext.length > 0 && (
               <>
                 <PanelSectionRow>
-                  <ButtonItem layout="below" onClick={() => Navigation.Navigate("/museck-queue")}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                      <span style={{ fontSize: "13px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Up Next</span>
-                      <span style={{ fontSize: "11px", fontWeight: "500", color: theme.primary }}>View All ({queueLength})</span>
-                    </div>
-                  </ButtonItem>
+                  <SectionLabel
+                    trailing={
+                      <span style={{ ...type.meta, color: theme.primary }}>{queueLength} in queue</span>
+                    }
+                  >
+                    Up Next
+                  </SectionLabel>
                 </PanelSectionRow>
-                <PanelSectionRow>
-                  <div style={{
-                    maxHeight: "160px", overflowY: "auto", borderRadius: theme.radiusMd,
-                    background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
-                    border: `1px solid ${theme.outline}22`,
-                  }}>
-                    {upNext.map((qTrack, idx) => (
-                      <div key={`${qTrack.ratingKey}-${idx}`} style={{
-                        display: "flex", alignItems: "center", gap: "12px",
-                        padding: "10px 14px",
-                        borderBottom: idx < upNext.length - 1 ? `1px solid ${theme.outline}22` : "none",
-                        transition: theme.transition,
+                {upNext.map((qTrack, idx) => (
+                  <PanelSectionRow key={`${qTrack.ratingKey}-${idx}`}>
+                    <RowButton
+                      onClick={() => playQueueIndex((status?.queue_index ?? 0) + idx + 1)}
+                      actionDescription="Play"
+                    >
+                      <span style={{
+                        ...type.meta, color: theme.outline, width: "16px",
+                        fontVariantNumeric: "tabular-nums", flexShrink: 0,
                       }}>
-                        <span style={{ fontSize: "11px", color: theme.outline, width: "18px", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                          {(status?.queue_index ?? 0) + idx + 2}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {qTrack.title}
-                          </div>
-                          <div style={{ fontSize: "11px", color: theme.onSurfaceVariant }}>{qTrack.artist}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        {(status?.queue_index ?? 0) + idx + 2}
+                      </span>
+                      <Art src={qTrack.thumb} size={36} iconSize={12} />
+                      <RowText title={qTrack.title} subtitle={qTrack.artist} />
+                    </RowButton>
+                  </PanelSectionRow>
+                ))}
+                <PanelSectionRow>
+                  <RowButton
+                    onClick={() => Navigation.Navigate("/museck-queue")}
+                    actionDescription="Open queue"
+                  >
+                    <FaList style={{ fontSize: "13px", color: theme.primary, flexShrink: 0 }} />
+                    <RowText title="View full queue" />
+                    <FaChevronRight style={{ fontSize: "11px", color: theme.outline, flexShrink: 0 }} />
+                  </RowButton>
                 </PanelSectionRow>
               </>
             )}
           </>
         ) : (
           <PanelSectionRow>
-            <div style={{
-              textAlign: "center", padding: "32px 16px",
-              background: `linear-gradient(135deg, ${theme.surfaceContainer} 0%, ${theme.surface} 100%)`,
-              borderRadius: theme.radiusLg, border: `1px solid ${theme.outline}22`,
-            }}>
-              <FaMusic style={{ fontSize: "36px", color: theme.outline, marginBottom: "12px", opacity: 0.5 }} />
-              <div style={{ color: theme.onSurfaceVariant, fontSize: "14px", fontWeight: "500" }}>
-                Select a playlist to start
-              </div>
-            </div>
+            <EmptyState
+              icon={<FaMusic />}
+              title="Nothing playing"
+              subtitle="Pick a playlist below, or search your library"
+            />
           </PanelSectionRow>
         )}
       </PanelSection>
 
-      {/* Search */}
-      <PanelSection title="Search">
+      {/* Library */}
+      <PanelSection title="Library">
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.Navigate("/museck-search")}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.onSurface }}>
-              <FaSearch style={{ color: theme.primary }} /> Search Music
+          <RowButton
+            onClick={() => Navigation.Navigate("/museck-search")}
+            actionDescription="Search"
+            accent={theme.primary}
+          >
+            <div style={{
+              width: "32px", height: "32px", borderRadius: theme.radiusSm,
+              background: theme.primaryContainer, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <FaSearch style={{ fontSize: "13px", color: theme.primary }} />
             </div>
-          </ButtonItem>
+            <RowText title="Search music" subtitle="Artists, albums and tracks" />
+            <FaChevronRight style={{ fontSize: "11px", color: theme.outline, flexShrink: 0 }} />
+          </RowButton>
         </PanelSectionRow>
       </PanelSection>
 
@@ -610,44 +903,34 @@ function NowPlaying() {
       <PanelSection title="Playlists">
         {loading ? (
           <PanelSectionRow>
-            <div style={{ textAlign: "center", color: theme.onSurfaceVariant, padding: "24px" }}>Loading...</div>
+            <LoadingState label="Loading playlists" />
           </PanelSectionRow>
         ) : playlists.length > 0 ? (
-          <>
-            {playlists.map((pl) => (
-              <PanelSectionRow key={pl.key}>
-                <ButtonItem layout="below" onClick={() => handlePlayPlaylist(pl)}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", width: "100%", maxWidth: "100%" }}>
-                    <div style={{
-                      width: "40px", height: "40px", borderRadius: theme.radiusSm,
-                      background: theme.primaryContainer,
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                    }}>
-                      <FaList style={{ fontSize: "16px", color: theme.primary }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" }}>
-                      <div style={{ fontSize: "13px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {pl.title}
-                      </div>
-                      <div style={{ fontSize: "11px", color: theme.onSurfaceVariant }}>{pl.count} tracks</div>
-                    </div>
-                    <div style={{
-                      width: "28px", height: "28px", borderRadius: theme.radiusFull,
-                      background: theme.primaryContainer,
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                    }}>
-                      <FaPlay style={{ fontSize: "10px", color: theme.primary, marginLeft: "2px" }} />
-                    </div>
-                  </div>
-                </ButtonItem>
-              </PanelSectionRow>
-            ))}
-          </>
+          playlists.map((pl) => (
+            <PanelSectionRow key={pl.key}>
+              <RowButton onClick={() => handlePlayPlaylist(pl)} actionDescription="Play playlist">
+                <Art src={pl.thumb} size={40} iconSize={14} />
+                <RowText
+                  title={pl.title}
+                  subtitle={`${pl.count} ${pl.count === 1 ? "track" : "tracks"}`}
+                />
+                <div style={{
+                  width: "26px", height: "26px", borderRadius: theme.radiusFull,
+                  background: theme.primaryContainer, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <FaPlay style={{ fontSize: "9px", color: theme.primary, marginLeft: "2px" }} />
+                </div>
+              </RowButton>
+            </PanelSectionRow>
+          ))
         ) : (
           <PanelSectionRow>
-            <div style={{ textAlign: "center", color: theme.onSurfaceVariant, fontSize: "13px", padding: "20px" }}>
-              No playlists found
-            </div>
+            <EmptyState
+              icon={<FaList />}
+              title="No playlists found"
+              subtitle="Check your server connection in Settings"
+            />
           </PanelSectionRow>
         )}
       </PanelSection>
@@ -693,109 +976,132 @@ function ServerListPage() {
   };
 
   return (
-    <div style={{ marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", paddingBottom: "60px" }}>
-      <PanelSection title="Servers">
+    <PageShell>
+      <PanelSection>
+        <PageHeader
+          title="Servers"
+          subtitle={servers.length ? `${servers.length} configured` : undefined}
+        />
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Close
-          </ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.Navigate("/museck-add-server")}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.primary, fontWeight: "600" }}>
-              <FaPlus style={{ fontSize: "14px" }} /> Add Server
+          <RowButton
+            onClick={() => Navigation.Navigate("/museck-add-server")}
+            actionDescription="Add server"
+            accent={theme.primary}
+          >
+            <div style={{
+              width: "32px", height: "32px", borderRadius: theme.radiusSm,
+              background: theme.primaryContainer, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <FaPlus style={{ fontSize: "12px", color: theme.primary }} />
             </div>
-          </ButtonItem>
+            <RowText title="Add server" subtitle="Plex, Jellyfin, Emby or Navidrome" />
+          </RowButton>
         </PanelSectionRow>
       </PanelSection>
 
       {loading ? (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }}>Loading...</div>
+            <LoadingState label="Loading servers" />
           </PanelSectionRow>
         </PanelSection>
       ) : servers.length === 0 ? (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{
-              textAlign: "center", padding: "48px 20px",
-              background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
-              borderRadius: theme.radiusLg,
-            }}>
-              <FaServer style={{ fontSize: "48px", color: theme.outline, marginBottom: "16px", opacity: 0.25 }} />
-              <div style={{ color: theme.onSurfaceVariant, fontSize: "15px", fontWeight: "500" }}>No servers configured</div>
-              <div style={{ color: theme.outline, fontSize: "13px", marginTop: "6px" }}>Add a server to get started</div>
-            </div>
+            <EmptyState
+              icon={<FaServer />}
+              title="No servers configured"
+              subtitle="Add a server to get started"
+            />
           </PanelSectionRow>
         </PanelSection>
       ) : (
-        <>
+        <PanelSection>
           {servers.map((srv) => {
             const isActive = srv.id === activeId;
             const typeColor = SERVER_TYPE_COLORS[srv.type] || theme.primary;
             return (
-              <PanelSection key={srv.id} title={
-                `${srv.name || "Unnamed Server"} [${SERVER_TYPE_LABELS[srv.type]}]${isActive ? " \u2713" : ""}`
-              }>
-                {/* Server info display */}
-                <PanelSectionRow>
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: "10px",
-                    padding: "4px 0",
-                  }}>
-                    <div style={{
-                      width: "8px", height: "8px", borderRadius: theme.radiusFull,
-                      backgroundColor: isActive ? theme.success : theme.outline,
-                      boxShadow: isActive ? `0 0 8px ${theme.success}66` : "none",
-                      flexShrink: 0,
-                    }} />
-                    <span style={{
-                      fontSize: "9px", fontWeight: "700", color: typeColor,
-                      background: typeColor + "22", padding: "2px 8px",
-                      borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-                    }}>
-                      {SERVER_TYPE_LABELS[srv.type]}
-                    </span>
-                    <span style={{
-                      fontSize: "11px", color: theme.onSurfaceVariant,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>
-                      {srv.server_url}
-                    </span>
-                  </div>
-                </PanelSectionRow>
-                {/* Actions */}
-                {!isActive && (
-                  <PanelSectionRow>
-                    <ButtonItem layout="below" onClick={() => handleActivate(srv.id)}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.primary, fontWeight: "600" }}>
-                        <FaCheck style={{ fontSize: "12px" }} /> Activate
+              <PanelSectionRow key={srv.id}>
+                <div style={{
+                  width: "100%", marginBottom: "10px",
+                  background: theme.surfaceContainer,
+                  border: `1px solid ${isActive ? theme.success + "55" : theme.outline + "22"}`,
+                  borderRadius: theme.radiusMd, overflow: "hidden",
+                }}>
+                  {/* Identity */}
+                  <div style={{ padding: "12px 13px 10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "7px" }}>
+                      <div style={{
+                        width: "7px", height: "7px", borderRadius: theme.radiusFull, flexShrink: 0,
+                        backgroundColor: isActive ? theme.success : theme.outline,
+                        boxShadow: isActive ? `0 0 8px ${theme.success}aa` : "none",
+                      }} />
+                      {isActive ? (
+                        <span style={{ ...type.label, color: theme.success }}>Active</span>
+                      ) : null}
+                      <div style={{ marginLeft: "auto" }}>
+                        <Badge color={typeColor}>{SERVER_TYPE_LABELS[srv.type]}</Badge>
                       </div>
-                    </ButtonItem>
-                  </PanelSectionRow>
-                )}
-                <PanelSectionRow>
-                  <ButtonItem layout="below" onClick={() => handleEdit(srv)}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.onSurfaceVariant }}>
-                      <FaCog style={{ fontSize: "12px" }} /> Edit
                     </div>
-                  </ButtonItem>
-                </PanelSectionRow>
-                <PanelSectionRow>
-                  <ButtonItem layout="below" onClick={() => handleDelete(srv.id)}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.error }}>
-                      <FaTrash style={{ fontSize: "12px" }} /> Delete
+                    <div style={{ ...type.title, color: theme.onSurface, ...ellipsis }}>
+                      {srv.name || "Unnamed Server"}
                     </div>
-                  </ButtonItem>
-                </PanelSectionRow>
-              </PanelSection>
+                    <div style={{ ...type.meta, color: theme.onSurfaceVariant, marginTop: "2px", ...ellipsis }}>
+                      {srv.server_url}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <Focusable
+                    style={{
+                      display: "flex", gap: "6px", padding: "0 10px 10px",
+                    }}
+                    //@ts-ignore
+                    flow-children="horizontal"
+                  >
+                    {!isActive && (
+                      <DialogButton
+                        className="museck-chip"
+                        focusable={true}
+                        onClick={() => handleActivate(srv.id)}
+                        onOKActionDescription="Make active"
+                        style={{
+                          ...chipButtonStyle(true), flex: 1, padding: "7px 10px", fontSize: "12px",
+                        }}
+                      >
+                        <FaCheck style={{ fontSize: "11px" }} /> Activate
+                      </DialogButton>
+                    )}
+                    <DialogButton
+                      className="museck-chip"
+                      focusable={true}
+                      onClick={() => handleEdit(srv)}
+                      onOKActionDescription="Edit server"
+                      style={{ ...chipButtonStyle(false), flex: 1, padding: "7px 10px", fontSize: "12px" }}
+                    >
+                      <FaCog style={{ fontSize: "11px" }} /> Edit
+                    </DialogButton>
+                    <DialogButton
+                      className="museck-chip"
+                      focusable={true}
+                      onClick={() => handleDelete(srv.id)}
+                      onOKActionDescription="Delete server"
+                      style={{
+                        ...chipButtonStyle(false), flex: 1, padding: "7px 10px", fontSize: "12px",
+                        color: theme.error, border: `1px solid ${theme.error}33`,
+                      }}
+                    >
+                      <FaTrash style={{ fontSize: "11px" }} /> Delete
+                    </DialogButton>
+                  </Focusable>
+                </div>
+              </PanelSectionRow>
             );
           })}
-        </>
+        </PanelSection>
       )}
-      <div style={{ height: "80px" }} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -918,126 +1224,125 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     setDiscoveredServers([]);
   };
 
+  const usesPassword = serverType === "jellyfin" || serverType === "emby" || serverType === "subsonic";
+
   return (
-    <div style={{ marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", paddingBottom: "60px" }}>
-      <PanelSection title={isEditing ? "Edit Server" : "Add Server"}>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Back
-          </ButtonItem>
-        </PanelSectionRow>
+    <PageShell>
+      <PanelSection>
+        <PageHeader
+          title={isEditing ? "Edit Server" : "Add Server"}
+          subtitle={isEditing ? name || undefined : "Connect a music library"}
+        />
       </PanelSection>
 
-      {/* Server Type Selector */}
-      {!isEditing && (
+      {/* Server type */}
+      {!isEditing ? (
         <PanelSection title="Server Type">
-          {(["plex", "jellyfin", "emby", "subsonic"] as ServerType[]).map((type) => (
-            <PanelSectionRow key={type}>
-              <ButtonItem layout="below" onClick={() => setServerType(type)}>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "10px",
-                  color: serverType === type ? SERVER_TYPE_COLORS[type] : theme.onSurfaceVariant,
-                  fontWeight: serverType === type ? "600" : "400",
-                }}>
-                  {serverType === type ? (
-                    <FaCheck style={{ fontSize: "12px" }} />
-                  ) : (
-                    <div style={{ width: "12px" }} />
-                  )}
-                  <span style={{
-                    fontSize: "9px", fontWeight: "700",
-                    color: SERVER_TYPE_COLORS[type],
-                    background: SERVER_TYPE_COLORS[type] + "22",
-                    padding: "2px 8px", borderRadius: theme.radiusFull,
+          {(["plex", "jellyfin", "emby", "subsonic"] as ServerType[]).map((option) => {
+            const selected = serverType === option;
+            const color = SERVER_TYPE_COLORS[option];
+            return (
+              <PanelSectionRow key={option}>
+                <RowButton
+                  onClick={() => setServerType(option)}
+                  actionDescription={`Use ${SERVER_TYPE_LABELS[option]}`}
+                  accent={selected ? color : undefined}
+                >
+                  <div style={{
+                    width: "26px", height: "26px", borderRadius: theme.radiusFull, flexShrink: 0,
+                    background: selected ? color + "22" : "transparent",
+                    border: `1px solid ${selected ? color : theme.outline}66`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    {SERVER_TYPE_LABELS[type]}
-                  </span>
-                  <span>{SERVER_TYPE_LABELS[type]}</span>
-                </div>
-              </ButtonItem>
-            </PanelSectionRow>
-          ))}
+                    {selected ? <FaCheck style={{ fontSize: "10px", color }} /> : null}
+                  </div>
+                  <RowText title={SERVER_TYPE_LABELS[option]} />
+                  <Badge color={color}>{option === "subsonic" ? "SUBSONIC" : option.toUpperCase()}</Badge>
+                </RowButton>
+              </PanelSectionRow>
+            );
+          })}
         </PanelSection>
-      )}
-
-      {/* Type badge when editing */}
-      {isEditing && serverType && (
+      ) : serverType ? (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{
-              display: "flex", alignItems: "center", gap: "8px", padding: "4px 0",
-            }}>
-              <span style={{
-                fontSize: "9px", fontWeight: "700",
-                color: SERVER_TYPE_COLORS[serverType],
-                background: SERVER_TYPE_COLORS[serverType] + "22",
-                padding: "2px 8px", borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-              }}>
-                {SERVER_TYPE_LABELS[serverType]}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
+              <Badge color={SERVER_TYPE_COLORS[serverType]}>{SERVER_TYPE_LABELS[serverType]}</Badge>
+              <span style={{ ...type.meta, color: theme.onSurfaceVariant }}>
+                Server type cannot be changed
               </span>
             </div>
           </PanelSectionRow>
         </PanelSection>
-      )}
+      ) : null}
 
       {serverType && (
         <>
-          {/* Connection Details */}
           <PanelSection title="Connection">
             <PanelSectionRow>
-              <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Server Name</div>
-              <TextField value={name} onChange={(e) => setName(e.target.value)} />
+              <TextField
+                label="Server name"
+                description="Shown in the server list"
+                value={name}
+                bShowClearAction={true}
+                onChange={(e) => setName(e.target.value)}
+              />
             </PanelSectionRow>
             <PanelSectionRow>
-              <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Server URL</div>
-              <TextField value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+              <TextField
+                label="Server URL"
+                description="For example 192.168.1.10:32400"
+                value={serverUrl}
+                bShowClearAction={true}
+                onChange={(e) => setServerUrl(e.target.value)}
+              />
             </PanelSectionRow>
 
-            {/* Plex Fields */}
             {serverType === "plex" && (
               <PanelSectionRow>
-                <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Plex Token</div>
-                <TextField value={token} onChange={(e) => setToken(e.target.value)} bIsPassword={true} />
+                <TextField
+                  label="Plex token"
+                  description="Found as X-Plex-Token in any Plex web request"
+                  value={token}
+                  bIsPassword={true}
+                  onChange={(e) => setToken(e.target.value)}
+                />
               </PanelSectionRow>
             )}
 
-            {/* Jellyfin / Emby Fields */}
-            {(serverType === "jellyfin" || serverType === "emby") && (
+            {usesPassword && (
               <>
                 <PanelSectionRow>
-                  <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Username</div>
-                  <TextField value={username} onChange={(e) => setUsername(e.target.value)} />
+                  <TextField
+                    label="Username"
+                    value={username}
+                    bShowClearAction={true}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
                 </PanelSectionRow>
                 <PanelSectionRow>
-                  <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Password</div>
-                  <TextField value={password} onChange={(e) => setPassword(e.target.value)} bIsPassword={true} />
-                </PanelSectionRow>
-              </>
-            )}
-
-            {/* Subsonic / Navidrome Fields */}
-            {serverType === "subsonic" && (
-              <>
-                <PanelSectionRow>
-                  <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Username</div>
-                  <TextField value={username} onChange={(e) => setUsername(e.target.value)} />
-                </PanelSectionRow>
-                <PanelSectionRow>
-                  <div style={{ marginBottom: "4px", fontSize: "12px", color: theme.onSurfaceVariant, fontWeight: "600" }}>Password</div>
-                  <TextField value={password} onChange={(e) => setPassword(e.target.value)} bIsPassword={true} />
+                  <TextField
+                    label="Password"
+                    value={password}
+                    bIsPassword={true}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </PanelSectionRow>
               </>
             )}
           </PanelSection>
 
-          {/* Auto-Detect (Plex, Jellyfin, Emby — not Subsonic) */}
+          {/* Discovery */}
           {serverType !== "subsonic" && (
             <PanelSection title="Discovery">
               <PanelSectionRow>
                 <ButtonItem layout="below" onClick={handleDiscover} disabled={isDiscovering}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.secondary }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                    color: theme.secondary, fontWeight: "600",
+                  }}>
                     <FaSearch style={{ fontSize: "12px" }} />
-                    {isDiscovering ? "Scanning..." : "Auto-Detect Servers"}
+                    {isDiscovering ? "Scanning\u2026" : "Auto-detect servers"}
                   </div>
                 </ButtonItem>
               </PanelSectionRow>
@@ -1045,23 +1350,15 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
                 const srvType = srv.type || "plex";
                 const srvColor = SERVER_TYPE_COLORS[srvType] || theme.primary;
                 return (
-                  <PanelSectionRow key={i}>
-                    <ButtonItem layout="below" onClick={() => handleSelectDiscovered(srv)}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px", color: theme.onSurface }}>
-                        <FaServer style={{ color: srvColor, flexShrink: 0 }} />
-                        <div style={{ textAlign: "left", flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: "500", fontSize: "13px" }}>{srv.name}</div>
-                          <div style={{ fontSize: "11px", color: theme.onSurfaceVariant }}>{srv.url}</div>
-                        </div>
-                        <span style={{
-                          fontSize: "9px", fontWeight: "700", color: srvColor,
-                          background: srvColor + "22", padding: "2px 8px",
-                          borderRadius: theme.radiusFull,
-                        }}>
-                          {SERVER_TYPE_LABELS[srvType]}
-                        </span>
-                      </div>
-                    </ButtonItem>
+                  <PanelSectionRow key={`${srv.url}-${i}`}>
+                    <RowButton
+                      onClick={() => handleSelectDiscovered(srv)}
+                      actionDescription="Use this server"
+                    >
+                      <FaServer style={{ fontSize: "14px", color: srvColor, flexShrink: 0 }} />
+                      <RowText title={srv.name} subtitle={srv.url} />
+                      <Badge color={srvColor}>{SERVER_TYPE_LABELS[srvType]}</Badge>
+                    </RowButton>
                   </PanelSectionRow>
                 );
               })}
@@ -1072,41 +1369,38 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
           <PanelSection title="Actions">
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={handleTest} disabled={isTesting || !serverUrl}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.onSurface, fontWeight: "500" }}>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                  color: theme.onSurface, fontWeight: "600",
+                }}>
                   <FaPlug style={{ fontSize: "12px" }} />
-                  {isTesting ? "Testing..." : "Test Connection"}
+                  {isTesting ? "Testing\u2026" : "Test connection"}
                 </div>
               </ButtonItem>
             </PanelSectionRow>
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={handleSave} disabled={isSaving || !serverUrl}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: theme.primary, fontWeight: "600" }}>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                  color: theme.primary, fontWeight: "600",
+                }}>
                   <FaCheck style={{ fontSize: "12px" }} />
-                  {isSaving ? "Saving..." : "Save Server"}
+                  {isSaving ? "Saving\u2026" : "Save server"}
                 </div>
               </ButtonItem>
             </PanelSectionRow>
           </PanelSection>
 
-          {/* Status */}
           {status.type !== "none" && (
             <PanelSection>
               <PanelSectionRow>
-                <div style={{
-                  padding: "12px 16px", borderRadius: theme.radiusMd,
-                  background: status.type === "success" ? theme.successContainer : status.type === "info" ? theme.secondaryContainer : theme.errorContainer,
-                  color: status.type === "success" ? theme.success : status.type === "info" ? theme.secondary : theme.error,
-                  textAlign: "center", fontWeight: "500", fontSize: "13px",
-                }}>
-                  {status.message}
-                </div>
+                <StatusBanner kind={status.type} message={status.message} />
               </PanelSectionRow>
             </PanelSection>
           )}
         </>
       )}
-      <div style={{ height: "80px" }} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -1177,21 +1471,18 @@ function SearchPage() {
     }
   };
 
-  const resultCardStyle: React.CSSProperties = {
-    display: "flex", alignItems: "center", gap: "12px",
-    width: "100%", maxWidth: "100%", overflow: "hidden",
-  };
-
   return (
-    <div style={{ marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }}>
-      <PanelSection title="Search Music">
+    <PageShell>
+      <PanelSection>
+        <PageHeader title="Search" subtitle="Find artists, albums and tracks" />
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Close
-          </ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <TextField value={query} onChange={(e) => setQuery(e.target.value)} />
+          <TextField
+            label="Search your library"
+            description="Artist, album or track name"
+            value={query}
+            bShowClearAction={true}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={handleSearch} disabled={loading || !query.trim()}>
@@ -1199,8 +1490,8 @@ function SearchPage() {
               display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
               color: query.trim() ? theme.primary : theme.onSurfaceVariant, fontWeight: "600",
             }}>
-              <FaSearch style={{ fontSize: "14px" }} />
-              {loading ? "Searching..." : "Search"}
+              <FaSearch style={{ fontSize: "13px" }} />
+              {loading ? "Searching\u2026" : "Search"}
             </div>
           </ButtonItem>
         </PanelSectionRow>
@@ -1209,170 +1500,84 @@ function SearchPage() {
       {loading && (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }}>
-              <div style={{
-                width: "40px", height: "40px", margin: "0 auto 16px",
-                borderRadius: theme.radiusFull,
-                border: `3px solid ${theme.surfaceContainerHighest}`,
-                borderTopColor: theme.primary,
-                animation: "museck-spin 1s linear infinite",
-              }} />
-              Searching...
-            </div>
+            <LoadingState label={`Searching for "${query}"`} />
           </PanelSectionRow>
         </PanelSection>
       )}
 
       {!loading && searched && (
         <>
-          {/* Artists */}
           {artists.length > 0 && (
             <PanelSection title="Artists">
               {artists.map((artist) => (
                 <PanelSectionRow key={artist.key}>
-                  <ButtonItem layout="below" onClick={() => handlePlayArtist(artist)}>
-                    <div style={resultCardStyle}>
-                      <div style={{
-                        width: "48px", height: "48px", borderRadius: theme.radiusFull,
-                        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryContainer} 100%)`,
-                        overflow: "hidden", flexShrink: 0, display: "flex",
-                        alignItems: "center", justifyContent: "center",
-                        boxShadow: `0 4px 12px ${theme.primary}33`,
-                      }}>
-                        {artist.thumb ? (
-                          <img src={artist.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <FaMusic style={{ color: "white", fontSize: "18px" }} />
-                        )}
-                      </div>
-                      <div style={{ flex: 1, textAlign: "left" }}>
-                        <div style={{ fontSize: "14px", fontWeight: "500", color: theme.onSurface }}>{artist.title}</div>
-                      </div>
-                      <span style={{
-                        fontSize: "10px", fontWeight: "600", color: theme.primary,
-                        background: theme.primaryContainer, padding: "4px 10px",
-                        borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-                      }}>ARTIST</span>
-                    </div>
-                  </ButtonItem>
+                  <RowButton onClick={() => handlePlayArtist(artist)} actionDescription="Play artist">
+                    <Art src={artist.thumb} size={44} radius={theme.radiusFull} iconSize={16} />
+                    <RowText title={artist.title} subtitle="Artist" />
+                    <FaPlay style={{ fontSize: "10px", color: theme.primary, flexShrink: 0 }} />
+                  </RowButton>
                 </PanelSectionRow>
               ))}
             </PanelSection>
           )}
 
-          {/* Albums */}
           {albums.length > 0 && (
             <PanelSection title="Albums">
               {albums.map((album) => (
                 <PanelSectionRow key={album.key}>
-                  <ButtonItem layout="below" onClick={() => handlePlayAlbum(album)}>
-                    <div style={resultCardStyle}>
-                      <div style={{
-                        width: "48px", height: "48px", borderRadius: theme.radiusSm,
-                        backgroundColor: theme.surfaceContainerHighest, overflow: "hidden",
-                        flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                        boxShadow: `0 2px 8px rgba(0,0,0,0.2)`,
-                      }}>
-                        {album.thumb ? (
-                          <img src={album.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <FaMusic style={{ color: theme.outline }} />
-                        )}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div style={{ fontSize: "14px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {album.title}
-                        </div>
-                        <div style={{ fontSize: "12px", color: theme.onSurfaceVariant, marginTop: "2px" }}>
-                          {album.artist} {album.year && `\u2022 ${album.year}`}
-                        </div>
-                      </div>
-                      <span style={{
-                        fontSize: "10px", fontWeight: "600", color: theme.secondary,
-                        background: theme.secondaryContainer, padding: "4px 10px",
-                        borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-                      }}>ALBUM</span>
-                    </div>
-                  </ButtonItem>
+                  <RowButton onClick={() => handlePlayAlbum(album)} actionDescription="Play album">
+                    <Art src={album.thumb} size={44} iconSize={16} />
+                    <RowText
+                      title={album.title}
+                      subtitle={album.year ? `${album.artist} \u2022 ${album.year}` : album.artist}
+                    />
+                    <FaPlay style={{ fontSize: "10px", color: theme.primary, flexShrink: 0 }} />
+                  </RowButton>
                 </PanelSectionRow>
               ))}
             </PanelSection>
           )}
 
-          {/* Tracks */}
           {tracks.length > 0 && (
             <PanelSection title="Tracks">
               {tracks.map((track) => (
                 <PanelSectionRow key={track.ratingKey}>
-                  <ButtonItem layout="below" onClick={() => handlePlayTrack(track, tracks)}>
-                    <div style={resultCardStyle}>
-                      <div style={{
-                        width: "48px", height: "48px", borderRadius: theme.radiusSm,
-                        backgroundColor: theme.surfaceContainerHighest, overflow: "hidden",
-                        flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        {track.thumb ? (
-                          <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <FaMusic style={{ color: theme.outline }} />
-                        )}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div style={{ fontSize: "14px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {track.title}
-                        </div>
-                        <div style={{ fontSize: "12px", color: theme.onSurfaceVariant, marginTop: "2px" }}>{track.artist}</div>
-                      </div>
-                      <span style={{
-                        fontSize: "10px", fontWeight: "600", color: theme.outline,
-                        background: theme.surfaceContainerHigh, padding: "4px 10px",
-                        borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-                      }}>TRACK</span>
-                    </div>
-                  </ButtonItem>
+                  <RowButton onClick={() => handlePlayTrack(track, tracks)} actionDescription="Play track">
+                    <Art src={track.thumb} size={44} iconSize={16} />
+                    <RowText title={track.title} subtitle={track.artist} />
+                    <FaPlay style={{ fontSize: "10px", color: theme.primary, flexShrink: 0 }} />
+                  </RowButton>
                 </PanelSectionRow>
               ))}
             </PanelSection>
           )}
 
-          {/* No Results */}
           {artists.length === 0 && albums.length === 0 && tracks.length === 0 && (
             <PanelSection>
               <PanelSectionRow>
-                <div style={{
-                  textAlign: "center", padding: "40px 20px",
-                  background: theme.surfaceContainer, borderRadius: theme.radiusLg,
-                  border: `1px solid ${theme.outline}22`,
-                }}>
-                  <FaSearch style={{ fontSize: "36px", color: theme.outline, marginBottom: "16px", opacity: 0.4 }} />
-                  <div style={{ color: theme.onSurfaceVariant, fontSize: "14px" }}>
-                    No results found for "{query}"
-                  </div>
-                </div>
+                <EmptyState
+                  icon={<FaSearch />}
+                  title="No results"
+                  subtitle={`Nothing matched "${query}"`}
+                />
               </PanelSectionRow>
             </PanelSection>
           )}
-          <div style={{ height: "60px" }} />
         </>
       )}
 
       {!loading && !searched && (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{
-              textAlign: "center", padding: "48px 20px",
-              background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
-              borderRadius: theme.radiusLg,
-            }}>
-              <FaSearch style={{ fontSize: "48px", color: theme.outline, marginBottom: "16px", opacity: 0.25 }} />
-              <div style={{ color: theme.onSurfaceVariant, fontSize: "15px", fontWeight: "500" }}>Search for music</div>
-              <div style={{ color: theme.outline, fontSize: "13px", marginTop: "6px" }}>Find artists, albums, and tracks</div>
-            </div>
+            <EmptyState
+              icon={<FaSearch />}
+              title="Search for music"
+              subtitle="Find artists, albums and tracks"
+            />
           </PanelSectionRow>
         </PanelSection>
       )}
-      <div style={{ height: "80px" }} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -1426,63 +1631,52 @@ function QueuePage() {
 
   const handlePlayIndex = async (index: number) => { await playQueueIndex(index); };
   const remainingCount = Math.max(0, totalTracks - currentIndex - 31);
+  const upcoming = Math.max(0, totalTracks - currentIndex - 1);
 
   return (
-    <div style={{ marginTop: "40px", height: "calc(100% - 40px)", overflowY: "auto", overflowX: "hidden", paddingBottom: "60px" }}>
-      <PanelSection title="Queue">
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => Navigation.NavigateBack()}>
-            &larr; Close
-          </ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: theme.onSurfaceVariant }}>
-            <FaList style={{ color: theme.primary }} />
-            <span style={{ fontWeight: "500" }}>{totalTracks}</span> tracks in queue
-          </div>
-        </PanelSectionRow>
+    <PageShell>
+      <PanelSection>
+        <PageHeader
+          title="Queue"
+          subtitle={totalTracks ? `${totalTracks} ${totalTracks === 1 ? "track" : "tracks"}` : undefined}
+        />
       </PanelSection>
 
       {loading ? (
         <PanelSection>
           <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "32px", color: theme.onSurfaceVariant }}>Loading queue...</div>
+            <LoadingState label="Loading queue" />
           </PanelSectionRow>
         </PanelSection>
       ) : (
         <>
-          {/* Now Playing Card */}
           {currentTrack && (
             <PanelSection title="Now Playing">
               <PanelSectionRow>
                 <div style={{
-                  display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px",
-                  background: `linear-gradient(135deg, ${theme.primary} 0%, #19b84d 100%)`,
-                  borderRadius: theme.radiusMd, boxShadow: `0 4px 20px ${theme.primary}44`,
+                  width: "100%", display: "flex", alignItems: "center", gap: "12px",
+                  padding: "12px 13px", borderRadius: theme.radiusMd,
+                  background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryDim} 100%)`,
+                  boxShadow: `0 6px 24px ${theme.primary}44`,
                 }}>
-                  <div style={{
-                    width: "52px", height: "52px", borderRadius: theme.radiusSm,
-                    backgroundColor: "rgba(0,0,0,0.2)", overflow: "hidden", flexShrink: 0,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                  }}>
-                    {currentTrack.thumb ? (
-                      <img src={currentTrack.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <FaMusic style={{ color: "white", fontSize: "20px" }} />
-                    )}
-                  </div>
+                  <Art src={currentTrack.thumb} size={46} iconSize={16} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: "600", fontSize: "15px", color: theme.onPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ ...type.title, color: theme.onPrimary, ...ellipsis }}>
                       {currentTrack.title}
                     </div>
-                    <div style={{ fontSize: "13px", color: "rgba(0,0,0,0.7)", marginTop: "2px" }}>
+                    <div style={{
+                      ...type.meta, color: "rgba(0,0,0,0.66)", marginTop: "2px", ...ellipsis,
+                    }}>
                       {currentTrack.artist}
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                  {/* Equaliser bars, purely decorative */}
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", height: "20px", flexShrink: 0 }}>
                     {[1, 2, 3].map((i) => (
-                      <div key={i} style={{ width: "3px", height: `${8 + i * 4}px`, backgroundColor: theme.onPrimary, borderRadius: "2px", opacity: 0.8 }} />
+                      <div key={i} style={{
+                        width: "3px", height: `${6 + i * 4}px`,
+                        backgroundColor: theme.onPrimary, borderRadius: "2px", opacity: 0.75,
+                      }} />
                     ))}
                   </div>
                 </div>
@@ -1490,71 +1684,55 @@ function QueuePage() {
             </PanelSection>
           )}
 
-          {/* Up Next */}
           {upNextTracks.length > 0 && (
-            <PanelSection title={`Up Next (${totalTracks - currentIndex - 1})`}>
+            <PanelSection title={`Up Next (${upcoming})`}>
               {upNextTracks.map((track, idx) => {
                 const actualIndex = currentIndex + 1 + idx;
                 return (
                   <PanelSectionRow key={`${track.ratingKey}-${actualIndex}`}>
-                    <ButtonItem layout="below" onClick={() => handlePlayIndex(actualIndex)}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "2px 0" }}>
-                        <span style={{ fontSize: "12px", color: theme.outline, width: "24px", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-                          {actualIndex + 1}
-                        </span>
-                        <div style={{
-                          width: "40px", height: "40px", borderRadius: theme.radiusSm,
-                          backgroundColor: theme.surfaceContainerHighest, overflow: "hidden",
-                          flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          {track.thumb ? (
-                            <img src={track.thumb} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          ) : (
-                            <FaMusic style={{ color: theme.outline, fontSize: "14px" }} />
-                          )}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                          <div style={{ fontSize: "13px", fontWeight: "500", color: theme.onSurface, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {track.title}
-                          </div>
-                          <div style={{ fontSize: "11px", color: theme.onSurfaceVariant, marginTop: "1px" }}>{track.artist}</div>
-                        </div>
-                      </div>
-                    </ButtonItem>
+                    <RowButton
+                      onClick={() => handlePlayIndex(actualIndex)}
+                      actionDescription="Play from here"
+                    >
+                      <span style={{
+                        ...type.meta, color: theme.outline, width: "22px",
+                        fontVariantNumeric: "tabular-nums", flexShrink: 0,
+                      }}>
+                        {actualIndex + 1}
+                      </span>
+                      <Art src={track.thumb} size={38} iconSize={13} />
+                      <RowText title={track.title} subtitle={track.artist} />
+                    </RowButton>
                   </PanelSectionRow>
                 );
               })}
               {remainingCount > 0 && (
                 <PanelSectionRow>
-                  <div style={{ textAlign: "center", padding: "12px", color: theme.onSurfaceVariant, fontSize: "12px", fontWeight: "500" }}>
-                    + {remainingCount} more tracks
+                  <div style={{
+                    width: "100%", textAlign: "center", padding: "12px",
+                    ...type.meta, color: theme.onSurfaceVariant,
+                  }}>
+                    + {remainingCount} more {remainingCount === 1 ? "track" : "tracks"}
                   </div>
                 </PanelSectionRow>
               )}
-              <div style={{ height: "60px" }} />
             </PanelSection>
           )}
 
-          {/* Empty */}
           {totalTracks === 0 && (
             <PanelSection>
               <PanelSectionRow>
-                <div style={{
-                  textAlign: "center", padding: "48px 20px",
-                  background: `linear-gradient(180deg, ${theme.surfaceContainer} 0%, transparent 100%)`,
-                  borderRadius: theme.radiusLg,
-                }}>
-                  <FaList style={{ fontSize: "48px", color: theme.outline, marginBottom: "16px", opacity: 0.25 }} />
-                  <div style={{ color: theme.onSurfaceVariant, fontSize: "15px", fontWeight: "500" }}>Queue is empty</div>
-                  <div style={{ color: theme.outline, fontSize: "13px", marginTop: "6px" }}>Play a playlist to get started</div>
-                </div>
+                <EmptyState
+                  icon={<FaList />}
+                  title="Queue is empty"
+                  subtitle="Play a playlist to get started"
+                />
               </PanelSectionRow>
             </PanelSection>
           )}
         </>
       )}
-      <div style={{ height: "80px" }} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -1621,113 +1799,100 @@ function Settings() {
   return (
     <>
     <PanelSection title="Server">
-      {/* Active Server Card */}
+      {/* Active server */}
       {activeServer ? (
         <PanelSectionRow>
           <div style={{
-            background: theme.surfaceContainer, borderRadius: theme.radiusMd,
-            padding: "14px 16px", border: `1px solid ${theme.outline}22`,
+            width: "100%", background: `linear-gradient(135deg, ${theme.surfaceContainerHigh} 0%, ${theme.surfaceContainer} 100%)`,
+            borderRadius: theme.radiusMd, padding: "13px 14px",
+            border: `1px solid ${theme.outline}22`,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "9px" }}>
               <div style={{
-                width: "8px", height: "8px", borderRadius: theme.radiusFull,
-                backgroundColor: theme.success,
-                boxShadow: `0 0 8px ${theme.success}66`,
+                width: "7px", height: "7px", borderRadius: theme.radiusFull,
+                backgroundColor: theme.success, flexShrink: 0,
+                boxShadow: `0 0 8px ${theme.success}aa`,
               }} />
-              <span style={{ fontSize: "12px", fontWeight: "600", color: theme.success }}>Active</span>
-              <span style={{
-                fontSize: "9px", fontWeight: "700",
-                color: SERVER_TYPE_COLORS[activeServer.type],
-                background: SERVER_TYPE_COLORS[activeServer.type] + "22",
-                padding: "2px 8px", borderRadius: theme.radiusFull, letterSpacing: "0.5px",
-              }}>
-                {SERVER_TYPE_LABELS[activeServer.type]}
-              </span>
+              <span style={{ ...type.label, color: theme.success }}>Active</span>
+              <div style={{ marginLeft: "auto" }}>
+                <Badge color={SERVER_TYPE_COLORS[activeServer.type]}>
+                  {SERVER_TYPE_LABELS[activeServer.type]}
+                </Badge>
+              </div>
             </div>
-            <div style={{ fontSize: "14px", fontWeight: "600", color: theme.onSurface, marginBottom: "2px" }}>
+            <div style={{ ...type.title, color: theme.onSurface, ...ellipsis }}>
               {activeServer.name || "Unnamed Server"}
             </div>
-            <div style={{
-              fontSize: "11px", color: theme.onSurfaceVariant,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
+            <div style={{ ...type.meta, color: theme.onSurfaceVariant, marginTop: "2px", ...ellipsis }}>
               {activeServer.server_url}
             </div>
           </div>
         </PanelSectionRow>
       ) : (
         <PanelSectionRow>
-          <div style={{
-            background: theme.surfaceContainer, borderRadius: theme.radiusMd,
-            padding: "14px 16px", border: `1px solid ${theme.outline}22`,
-            textAlign: "center",
-          }}>
-            <div style={{ fontSize: "13px", color: theme.onSurfaceVariant }}>No server configured</div>
-          </div>
+          <EmptyState
+            icon={<FaServer />}
+            title="No server configured"
+            subtitle="Add one to start listening"
+          />
         </PanelSectionRow>
       )}
 
-      {/* Quick Switch */}
+      {/* Quick switch */}
       {otherServers.length > 0 && (
         <>
           <PanelSectionRow>
-            <div style={{ padding: "4px 0", color: theme.onSurfaceVariant, fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-              <FaExchangeAlt style={{ fontSize: "10px" }} /> Quick Switch
-            </div>
+            <SectionLabel>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <FaExchangeAlt style={{ fontSize: "9px" }} /> Quick Switch
+              </span>
+            </SectionLabel>
           </PanelSectionRow>
           {otherServers.map((srv) => (
             <PanelSectionRow key={srv.id}>
-              <ButtonItem layout="below" onClick={() => handleSwitchServer(srv.id)}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", color: theme.onSurface }}>
-                  <span style={{
-                    fontSize: "9px", fontWeight: "700",
-                    color: SERVER_TYPE_COLORS[srv.type],
-                    background: SERVER_TYPE_COLORS[srv.type] + "22",
-                    padding: "2px 8px", borderRadius: theme.radiusFull,
-                  }}>
-                    {SERVER_TYPE_LABELS[srv.type]}
-                  </span>
-                  <span style={{ fontSize: "13px", fontWeight: "500" }}>{srv.name || "Unnamed"}</span>
-                </div>
-              </ButtonItem>
+              <RowButton
+                onClick={() => handleSwitchServer(srv.id)}
+                actionDescription="Switch to this server"
+              >
+                <div style={{
+                  width: "8px", height: "8px", borderRadius: theme.radiusFull,
+                  background: theme.outline, flexShrink: 0,
+                }} />
+                <RowText title={srv.name || "Unnamed"} subtitle={srv.server_url} />
+                <Badge color={SERVER_TYPE_COLORS[srv.type]}>{SERVER_TYPE_LABELS[srv.type]}</Badge>
+              </RowButton>
             </PanelSectionRow>
           ))}
         </>
       )}
 
-      {/* Manage Servers */}
+      {/* Actions */}
       <PanelSectionRow>
-        <ButtonItem layout="below" onClick={() => Navigation.Navigate("/museck-settings")}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", color: theme.onSurface }}>
-            <FaCog style={{ color: theme.primary }} /> Manage Servers
-          </div>
-        </ButtonItem>
+        <RowButton
+          onClick={() => Navigation.Navigate("/museck-settings")}
+          actionDescription="Manage servers"
+        >
+          <FaCog style={{ fontSize: "13px", color: theme.primary, flexShrink: 0 }} />
+          <RowText title="Manage servers" subtitle="Add, edit or remove" />
+          <FaChevronRight style={{ fontSize: "11px", color: theme.outline, flexShrink: 0 }} />
+        </RowButton>
       </PanelSectionRow>
 
-      {/* Test Connection */}
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={handleTestConnection} disabled={isTesting || !activeServer}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
             color: activeServer ? theme.primary : theme.onSurfaceVariant, fontWeight: "600",
           }}>
-            <FaPlug />
-            {isTesting ? "Testing..." : "Test Connection"}
+            <FaPlug style={{ fontSize: "12px" }} />
+            {isTesting ? "Testing…" : "Test Connection"}
           </div>
         </ButtonItem>
       </PanelSectionRow>
 
-      {/* Status */}
       {status.type !== "none" && (
         <PanelSectionRow>
-          <div style={{
-            padding: "12px 16px", borderRadius: theme.radiusMd,
-            background: status.type === "success" ? theme.successContainer : status.type === "info" ? theme.secondaryContainer : theme.errorContainer,
-            color: status.type === "success" ? theme.success : status.type === "info" ? theme.secondary : theme.error,
-            textAlign: "center", fontSize: "13px", fontWeight: "500",
-          }}>
-            {status.message}
-          </div>
+          <StatusBanner kind={status.type} message={status.message} />
         </PanelSectionRow>
       )}
     </PanelSection>
@@ -1757,35 +1922,20 @@ function Content() {
 
   return (
     <>
-      <PanelSection title="Museck">
+      <PanelSection>
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => setView("player")}>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              color: view === "player" ? theme.primary : theme.onSurfaceVariant,
-              fontWeight: view === "player" ? "600" : "500",
-            }}>
-              <FaMusic style={{ fontSize: "14px" }} />
-              Player {view === "player" && "\u25CF"}
-            </div>
-          </ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => setView("settings")}>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              color: view === "settings" ? theme.primary : theme.onSurfaceVariant,
-              fontWeight: view === "settings" ? "600" : "500",
-            }}>
-              <FaCog style={{ fontSize: "14px" }} />
-              Settings {view === "settings" && "\u25CF"}
-            </div>
-          </ButtonItem>
+          <SegmentedTabs
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "player", label: "Player", icon: <FaMusic style={{ fontSize: "12px" }} /> },
+              { value: "settings", label: "Settings", icon: <FaCog style={{ fontSize: "12px" }} /> },
+            ]}
+          />
         </PanelSectionRow>
       </PanelSection>
 
-      {view === "settings" && <Settings />}
-      {view === "player" && <NowPlaying />}
+      {view === "settings" ? <Settings /> : <NowPlaying />}
     </>
   );
 }
