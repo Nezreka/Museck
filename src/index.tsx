@@ -11,6 +11,7 @@ import {
   Focusable,
   DialogButton,
   Marquee,
+  QuickAccessTab,
 } from "@decky/ui";
 import { callable, routerHook, toaster } from "@decky/api";
 import { useState, useEffect, useRef } from "react";
@@ -199,6 +200,16 @@ const SERVER_TYPE_COLORS: Record<ServerType, string> = {
 // Module-level variable for passing server config to edit page
 let editServerConfig: ServerConfig | null = null;
 
+/** Leave a full-screen page and reopen the Museck panel.
+ *
+ *  NavigateBack alone drops the user in whatever Steam screen was underneath,
+ *  so picking a track from Search felt like being thrown out of the plugin.
+ *  Reopening the Decky tab returns them to where they started. */
+function returnToPanel() {
+  Navigation.NavigateBack();
+  Navigation.OpenQuickAccessMenu(QuickAccessTab.Decky);
+}
+
 // =============================================================================
 // Theme
 // =============================================================================
@@ -248,10 +259,20 @@ const ellipsis: React.CSSProperties = {
   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
 };
 
-// Focusable renders a plain div, so gamepad focus produces no visual change on
-// its own — on a controller-only device that leaves no way to tell what's
-// selected. Steam's navigation adds `gpfocus` to the focused element; `:focus`
-// covers mouse/touch. Also defines the spinner keyframes used by the search page.
+// Focus styling, and why it is built this way:
+//
+// Steam marks the gamepad-focused element with `gpfocus`, and exactly one
+// element carries it at a time. It deliberately does NOT track DOM focus —
+// these buttons have no tabindex, so `:focus` lingers on whatever was last
+// activated. Selecting on `:focus` therefore highlights a stale element, which
+// reads as the highlight being stuck on the previous item.  Match `gpfocus`
+// only.
+//
+// Steam's own focus style for a DialogButton is `background: #fff`, but an
+// inline background on the element outranks it, so anything styled inline
+// silently loses its focus indicator. These rules restate the highlight with
+// `!important` so it survives inline styles, using a white ring — visible
+// against both the dark rows and the green play button.
 const STYLE_ELEMENT_ID = "museck-styles";
 const GLOBAL_STYLES = `
 @keyframes museck-spin {
@@ -259,32 +280,36 @@ const GLOBAL_STYLES = `
   to { transform: rotate(360deg); }
 }
 .museck-ctl, .museck-chip, .museck-row { outline: none; }
-.museck-ctl:focus, .museck-ctl.gpfocus {
-  transform: scale(1.12);
-  filter: brightness(1.2);
-  box-shadow: 0 0 0 3px ${theme.primary}, 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+
+.museck-ctl.gpfocus {
+  transform: scale(1.14);
+  filter: brightness(1.15);
+  box-shadow: 0 0 0 3px #ffffff, 0 8px 26px rgba(0, 0, 0, 0.55) !important;
 }
-.museck-chip:focus, .museck-chip.gpfocus {
-  border-color: ${theme.primary} !important;
-  filter: brightness(1.2);
+
+.museck-chip.gpfocus {
+  filter: brightness(1.15);
+  border-color: transparent !important;
+  box-shadow: 0 0 0 3px #ffffff, 0 4px 14px rgba(0, 0, 0, 0.45) !important;
 }
-.museck-row:focus, .museck-row.gpfocus {
-  background: ${theme.surfaceContainerHigh} !important;
-  border-color: ${theme.primary}88 !important;
-  transform: translateX(2px);
+
+.museck-row.gpfocus {
+  background: ${theme.surfaceContainerHighest} !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 0 3px #ffffff, 0 6px 20px rgba(0, 0, 0, 0.5) !important;
+  transform: translateX(3px);
 }
 `;
 
-function injectGlobalStyles() {
-  if (document.getElementById(STYLE_ELEMENT_ID)) return;
-  const el = document.createElement("style");
-  el.id = STYLE_ELEMENT_ID;
-  el.textContent = GLOBAL_STYLES;
-  document.head.appendChild(el);
-}
-
-function removeGlobalStyles() {
-  document.getElementById(STYLE_ELEMENT_ID)?.remove();
+/** Renders the stylesheet as part of the component tree.
+ *
+ *  Appending to `document.head` from plugin code puts the styles in
+ *  SharedJSContext, but the panel actually mounts in the QuickAccess document
+ *  and the routed pages in the main window — so a head-injected sheet applies
+ *  to nothing. Rendering the tag inside the tree lands it in whichever
+ *  document the components are in. */
+function GlobalStyles() {
+  return <style id={STYLE_ELEMENT_ID} dangerouslySetInnerHTML={{ __html: GLOBAL_STYLES }} />;
 }
 
 // DialogButton is Steam's real button primitive: it registers with gamepad
@@ -534,7 +559,7 @@ function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
         </div>
       </PanelSectionRow>
       <PanelSectionRow>
-        <RowButton onClick={() => Navigation.NavigateBack()} actionDescription="Back">
+        <RowButton onClick={returnToPanel} actionDescription="Back to Museck">
           <FaChevronLeft style={{ fontSize: "12px", color: theme.primary, flexShrink: 0 }} />
           <span style={{ ...type.body, color: theme.onSurface }}>Back</span>
         </RowButton>
@@ -550,6 +575,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       marginTop: "40px", height: "calc(100% - 40px)",
       overflowY: "auto", overflowX: "hidden", paddingBottom: "60px",
     }}>
+      <GlobalStyles />
       {children}
       <div style={{ height: "80px" }} />
     </div>
@@ -1452,14 +1478,14 @@ function SearchPage() {
   const handlePlayTrack = async (track: Track, allTracks: Track[]) => {
     const index = allTracks.findIndex(t => t.ratingKey === track.ratingKey);
     await setQueue(allTracks, index >= 0 ? index : 0);
-    Navigation.NavigateBack();
+    returnToPanel();
   };
 
   const handlePlayAlbum = async (album: Album) => {
     const result = await getAlbumTracks(album.key);
     if (result.success && result.tracks.length > 0) {
       await setQueue(result.tracks, 0);
-      Navigation.NavigateBack();
+      returnToPanel();
     }
   };
 
@@ -1467,7 +1493,7 @@ function SearchPage() {
     const result = await getArtistTracks(artist.key);
     if (result.success && result.tracks.length > 0) {
       await setQueue(result.tracks, 0);
-      Navigation.NavigateBack();
+      returnToPanel();
     }
   };
 
@@ -1922,6 +1948,7 @@ function Content() {
 
   return (
     <>
+      <GlobalStyles />
       <PanelSection>
         <PanelSectionRow>
           <SegmentedTabs
@@ -2013,8 +2040,6 @@ function stopTrackWatcher() {
 export default definePlugin(() => {
   console.log("Museck plugin loaded!");
 
-  injectGlobalStyles();
-
   routerHook.addRoute("/museck-settings", () => <ServerListPage />, { exact: true });
   routerHook.addRoute("/museck-add-server", () => <AddServerPage />, { exact: true });
   routerHook.addRoute("/museck-edit-server", () => <EditServerPage />, { exact: true });
@@ -2041,7 +2066,6 @@ export default definePlugin(() => {
       routerHook.removeRoute("/museck-search");
       routerHook.removeRoute("/museck-queue");
       stopTrackWatcher();
-      removeGlobalStyles();
     },
   };
 });
