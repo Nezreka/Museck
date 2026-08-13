@@ -1244,18 +1244,27 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     setIsTesting(false);
   };
 
-  const loadLibraries = async () => {
+  const loadLibraries = async (silent = false) => {
     if (serverType !== "plex" || !serverUrl) return;
     setIsLoadingLibraries(true);
     try {
       const result = await getLibraries(buildConfig());
       if (result.success) setLibraries(result.libraries);
-      else setStatus({ type: "error", message: result.message || "Could not list libraries" });
+      else if (!silent) setStatus({ type: "error", message: result.message || "Could not list libraries" });
     } catch (e) {
-      setStatus({ type: "error", message: "Could not list libraries" });
+      if (!silent) setStatus({ type: "error", message: "Could not list libraries" });
     }
     setIsLoadingLibraries(false);
   };
+
+  // When editing an existing Plex server, fetch the list up front so the
+  // current choice is visible rather than hidden behind a button press.
+  // Silent, because an unreachable server here is not worth an error banner.
+  useEffect(() => {
+    if (isEditing && existingServer?.type === "plex" && existingServer?.server_url) {
+      loadLibraries(true);
+    }
+  }, []);
 
   const handleDiscover = async () => {
     setIsDiscovering(true);
@@ -1402,7 +1411,7 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
               <PanelSectionRow>
                 <ButtonItem
                   layout="below"
-                  onClick={loadLibraries}
+                  onClick={() => loadLibraries()}
                   disabled={isLoadingLibraries || !serverUrl || !token}
                 >
                   <div style={{
