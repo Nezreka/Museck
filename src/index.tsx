@@ -68,6 +68,7 @@ interface SettingsData {
   servers: ServerConfig[];
   active_server_id: string;
   notify_on_track_change?: boolean;
+  report_playback?: boolean;
 }
 
 interface DiscoveredServer {
@@ -1878,6 +1879,7 @@ function Settings() {
   const [status, setStatus] = useState<{ type: "none" | "success" | "error" | "info"; message: string }>({ type: "none", message: "" });
   const [isTesting, setIsTesting] = useState(false);
   const [trackNotify, setTrackNotify] = useState(true);
+  const [reportPlayback, setReportPlayback] = useState(true);
 
   // Settings rarely change, but this panel stays mounted while the user edits
   // servers on the full-screen page — so keep polling, and skip the state
@@ -1894,6 +1896,7 @@ function Settings() {
         setServers(settings.servers || []);
         setActiveId(settings.active_server_id || "");
         setTrackNotify(settings.notify_on_track_change !== false);
+        setReportPlayback(settings.report_playback !== false);
       } catch (e) {
         console.error("Failed to load settings:", e);
       }
@@ -2037,6 +2040,17 @@ function Settings() {
             setTrackNotify(val);
             notifyOnTrackChange = val;
             await savePreference("notify_on_track_change", val);
+          }}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
+          label="Report Playback To Server"
+          description="Show Museck as an active session and record plays in your server's history. Needed for Tautulli and scrobbling."
+          checked={reportPlayback}
+          onChange={async (val: boolean) => {
+            setReportPlayback(val);
+            await savePreference("report_playback", val);
           }}
         />
       </PanelSectionRow>

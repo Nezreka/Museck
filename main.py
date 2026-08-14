@@ -23,6 +23,12 @@ import urllib.parse
 # which no amount of patience will transfer, let alone queue.
 MAX_QUEUE_TRACKS = 2000
 
+# Reported to the media server when Museck identifies itself as a player.
+MUSECK_VERSION = "1.0"
+
+# How often to re-report progress while a track plays.
+PLAYBACK_REPORT_INTERVAL = 10
+
 
 async def _to_thread(func, *args, **kwargs):
     """Run a blocking callable off the event loop.
@@ -99,6 +105,14 @@ class MusicService:
         """Selectable music libraries. Empty when the backend has no concept of them."""
         return []
 
+    def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
+        """Tell the server what playback is doing.
+
+        No-op unless a backend implements it. `state` is playing, paused or
+        stopped.
+        """
+        return
+
 
 # =============================================================================
 # Plex Service
@@ -115,6 +129,45 @@ class PlexService(MusicService):
         # made of "tracks" — unscoped, a search for "chapter" returns book
         # chapters. Empty means every audio library, as before.
         self.library_key = str(config.get("library_key") or "")
+        # Stable per-installation id so Plex treats this as one returning
+        # device rather than a new phantom player on every launch.
+        self.client_id = config.get("client_id", "")
+
+    def _client_headers(self) -> dict:
+        """Identify Museck as a player, which is what makes Plex open a session."""
+        return {
+            "X-Plex-Client-Identifier": self.client_id or "museck",
+            "X-Plex-Product": "Museck",
+            "X-Plex-Version": MUSECK_VERSION,
+            "X-Plex-Platform": "Linux",
+            "X-Plex-Platform-Version": "SteamOS",
+            "X-Plex-Device": "Steam Deck",
+            "X-Plex-Device-Name": "Museck",
+            "X-Plex-Provides": "player",
+            "X-Plex-Token": self.token,
+            "Accept": "application/json",
+        }
+
+    def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
+        """Report progress to /:/timeline.
+
+        Without this Plex only sees an anonymous file download, so nothing is
+        recorded: no active session, no play count, and nothing for Tautulli
+        or anything else watching sessions to pick up.
+        """
+        if not rating_key:
+            return
+        params = {
+            "ratingKey": str(rating_key),
+            "key": f"/library/metadata/{rating_key}",
+            "identifier": "com.plexapp.plugins.library",
+            "state": state,
+            "time": str(max(0, int(position_ms))),
+            "duration": str(max(0, int(duration_ms))),
+            "playbackTime": str(max(0, int(position_ms))),
+        }
+        url = f"{self.server_url}/:/timeline?{urllib.parse.urlencode(params)}"
+        self._http_get(url, self._client_headers(), timeout=5)
 
     def get_libraries(self) -> list:
         data = self._api_get("/library/sections")
@@ -976,6 +1029,7 @@ class Plugin:
     # Audio player control (using ffplay)
     player_process = None
     player_paused = False
+    _last_report = 0
     playback_start_time = None
     total_paused_time = 0
     pause_start_time = None
@@ -1011,9 +1065,19 @@ class Plugin:
         self.settings_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
         decky.logger.info(f"Settings path: {self.settings_path}")
         await self._load_settings()
+
+        # A stable client id, generated once, so the server recognises this
+        # installation across restarts instead of inventing a new player.
+        if not self.settings.get("client_id"):
+            self.settings["client_id"] = os.urandom(16).hex()
+            await self._save_settings()
+
         self._resolve_service()
 
     async def _unload(self):
+        # Leaving without a stopped report strands a phantom session on the
+        # server, and an orphaned ffplay nobody can control.
+        await self.stop()
         decky.logger.info("Museck plugin unloaded!")
 
     async def _uninstall(self):
@@ -1077,7 +1141,9 @@ class Plugin:
             if srv.get("id") == active_id:
                 cls = SERVICE_CLASSES.get(srv.get("type"))
                 if cls:
-                    self.current_service = cls(srv)
+                    # client_id belongs to the installation, not the server, so
+                    # it is layered on here rather than stored per entry.
+                    self.current_service = cls({**srv, "client_id": self.settings.get("client_id", "")})
                     decky.logger.info(f"Resolved service: {srv.get('type')} ({srv.get('name')})")
                     return
         self.current_service = None
@@ -1099,6 +1165,7 @@ class Plugin:
             "servers": self.settings.get("servers", []),
             "active_server_id": self.settings.get("active_server_id", ""),
             "notify_on_track_change": self.settings.get("notify_on_track_change", True),
+            "report_playback": self.settings.get("report_playback", True),
         }
 
     async def save_preference(self, key: str, value):
@@ -1365,6 +1432,29 @@ class Plugin:
                 return candidate
         return shutil.which("ffplay") or ""
 
+    async def _report_playback(self, state: str, track: dict = None):
+        """Report playback state to the active server, never fatally.
+
+        Reporting is best-effort: a server that is slow or does not support it
+        must not interrupt what is actually playing.
+        """
+        if not self.current_service or not self.settings.get("report_playback", True):
+            return
+        track = track or self.playback_state.get("current_track")
+        if not track or not track.get("ratingKey"):
+            return
+
+        position_ms = int(max(0, self.playback_state.get("position") or 0) * 1000)
+        duration_ms = int(track.get("duration") or 0)
+        self._last_report = time.time()
+        try:
+            await _to_thread(
+                self.current_service.report_playback,
+                track["ratingKey"], state, position_ms, duration_ms,
+            )
+        except Exception as e:
+            decky.logger.error(f"Playback report ({state}) failed: {e}")
+
     def _read_ffplay_log(self, max_lines: int = 10) -> str:
         try:
             log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
@@ -1473,6 +1563,7 @@ class Plugin:
                 return {"success": False, "message": f"ffplay exited immediately (code {exit_code})"}
 
             self.playback_state["last_error"] = None
+            await self._report_playback("playing")
 
             asyncio.create_task(self._delayed_volume_set(self.player_process.pid, self.playback_state["volume"]))
 
@@ -1490,6 +1581,7 @@ class Plugin:
                 self.player_paused = True
                 self.pause_start_time = time.time()
                 self.playback_state["is_playing"] = False
+                await self._report_playback("paused")
             except Exception as e:
                 decky.logger.error(f"Pause error: {e}")
         return {"success": True}
@@ -1503,6 +1595,7 @@ class Plugin:
                     self.total_paused_time += time.time() - self.pause_start_time
                     self.pause_start_time = None
                 self.playback_state["is_playing"] = True
+                await self._report_playback("playing")
             except Exception as e:
                 decky.logger.error(f"Resume error: {e}")
         return {"success": True}
@@ -1524,6 +1617,9 @@ class Plugin:
         return await self.pause()
 
     async def stop(self):
+        # Report before clearing, while the track is still known
+        if self.playback_state.get("current_track"):
+            await self._report_playback("stopped")
         if self.player_process:
             try:
                 # A SIGSTOPped process never handles SIGTERM, so terminating a
@@ -1637,6 +1733,12 @@ class Plugin:
             current_pause = time.time() - self.pause_start_time if self.pause_start_time else 0
             elapsed = time.time() - self.playback_start_time - self.total_paused_time - current_pause
             self.playback_state["position"] = min(elapsed, self.playback_state["duration"])
+
+        # Keep the server's session alive while a track plays. This poll is
+        # already running once a second, so no extra timer is needed.
+        if (self.playback_state["is_playing"]
+                and time.time() - self._last_report >= PLAYBACK_REPORT_INTERVAL):
+            await self._report_playback("playing")
 
         # Polled once a second — send queue metadata rather than the whole
         # queue, which for a large playlist is a lot of JSON per tick.
