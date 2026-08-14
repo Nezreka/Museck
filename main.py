@@ -105,6 +105,13 @@ class MusicService:
         """Selectable music libraries. Empty when the backend has no concept of them."""
         return []
 
+    def get_genres(self) -> list:
+        """Available genres as [{"key", "title"}]. Empty if unsupported."""
+        return []
+
+    def get_genre_tracks(self, genre_key: str) -> list:
+        raise NotImplementedError
+
     def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
         """Tell the server what playback is doing.
 
@@ -358,6 +365,45 @@ class PlexService(MusicService):
             if len(all_tracks) >= MAX_QUEUE_TRACKS:
                 break
         return all_tracks[:MAX_QUEUE_TRACKS]
+
+    def _music_sections(self) -> list:
+        return [self.library_key] if self.library_key else [l["key"] for l in self.get_libraries()]
+
+    def get_genres(self) -> list:
+        """Genres across the chosen library, or every music library if unset.
+
+        Keys are section-qualified because a genre id only means something
+        within its own section.
+        """
+        genres = {}
+        for section in self._music_sections():
+            try:
+                data = self._api_get(f"/library/sections/{section}/genre")
+            except Exception as e:
+                decky.logger.error(f"Genre listing failed for section {section}: {e}")
+                continue
+            for entry in data.get("MediaContainer", {}).get("Directory", []) or []:
+                title = entry.get("title")
+                if title and title not in genres:
+                    genres[title] = {"key": f"{section}:{entry.get('key')}", "title": title}
+        return sorted(genres.values(), key=lambda g: g["title"].lower())
+
+    def get_genre_tracks(self, genre_key: str) -> list:
+        section, _, genre_id = str(genre_key).partition(":")
+        if not genre_id:
+            return []
+
+        # Plex records a genre at whichever level the metadata agent set it, so
+        # a plain track query returns nothing for genres held on the album or
+        # artist instead. Its relational filters reach those in one query —
+        # walking the matching albums individually took ~20s where this takes
+        # a fraction of a second.
+        for field in ("genre", "album.genre", "artist.genre"):
+            tracks = self._paged_tracks(
+                f"/library/sections/{section}/all?type=10&{field}={genre_id}")
+            if tracks:
+                return tracks
+        return []
 
     def get_stream_url(self, track_key: str) -> str:
         return f"{self.server_url}{track_key}?X-Plex-Token={self.token}"
@@ -692,6 +738,24 @@ class JellyfinService(MusicService):
         })
         return [self._parse_track(item) for item in data.get("Items", [])]
 
+    def get_genres(self) -> list:
+        data = self._api_get("/MusicGenres", {"UserId": self.user_id, "Limit": "300"})
+        return [
+            {"key": item["Id"], "title": item.get("Name", "Unknown")}
+            for item in data.get("Items", []) or [] if item.get("Id")
+        ]
+
+    def get_genre_tracks(self, genre_key: str) -> list:
+        data = self._api_get("/Items", {
+            "IncludeItemTypes": "Audio",
+            "Recursive": "true",
+            "UserId": self.user_id,
+            "Fields": "MediaSources",
+            "GenreIds": genre_key,
+            "Limit": str(MAX_QUEUE_TRACKS),
+        })
+        return [self._parse_track(item) for item in data.get("Items", []) or []]
+
     def get_stream_url(self, track_key: str) -> str:
         return f"{self.server_url}/Audio/{track_key}/stream?static=true&api_key={self.api_key}"
 
@@ -964,6 +1028,27 @@ class SubsonicService(MusicService):
                 if len(all_tracks) >= MAX_QUEUE_TRACKS:
                     break
         return all_tracks[:MAX_QUEUE_TRACKS]
+
+    def get_genres(self) -> list:
+        resp = self._api_get("getGenres")
+        entries = resp.get("genres", {}).get("genre", [])
+        if isinstance(entries, dict):
+            entries = [entries]
+        genres = []
+        for entry in entries:
+            # Subsonic identifies a genre by its name
+            name = entry.get("value") or entry.get("name")
+            if name and entry.get("songCount", 1):
+                genres.append({"key": name, "title": name})
+        return sorted(genres, key=lambda g: g["title"].lower())
+
+    def get_genre_tracks(self, genre_key: str) -> list:
+        resp = self._api_get("getSongsByGenre", {
+            "genre": genre_key, "count": str(MAX_QUEUE_TRACKS)})
+        songs = resp.get("songsByGenre", {}).get("song", [])
+        if isinstance(songs, dict):
+            songs = [songs]
+        return [self._parse_track(song) for song in songs]
 
     def get_stream_url(self, track_key: str) -> str:
         params = self._auth_params()
@@ -1801,6 +1886,25 @@ class Plugin:
         if result["truncated"]:
             decky.logger.warning(f"{label} truncated to {MAX_QUEUE_TRACKS} tracks")
         return result
+
+    async def get_genres(self):
+        if not self.current_service:
+            return {"success": False, "genres": []}
+        try:
+            return {"success": True, "genres": await _to_thread(self.current_service.get_genres)}
+        except Exception as e:
+            decky.logger.error(f"get_genres error: {e}")
+            return {"success": False, "genres": []}
+
+    async def play_genre(self, genre_key: str):
+        """Shuffle a genre.
+
+        A genre is a bucket rather than a running order, so it starts shuffled;
+        the toggle is set too, so the panel reflects what is happening.
+        """
+        self.playback_state["shuffle"] = True
+        return await self._play_collection(
+            lambda: self.current_service.get_genre_tracks(genre_key), "genre")
 
     async def play_playlist(self, playlist_key: str):
         return await self._play_collection(

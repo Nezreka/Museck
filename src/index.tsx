@@ -34,6 +34,7 @@ import {
   FaExchangeAlt,
   FaChevronLeft,
   FaChevronRight,
+  FaGuitar,
 } from "react-icons/fa";
 
 // =============================================================================
@@ -57,6 +58,11 @@ interface ServerConfig {
   password?: string;
   // Plex: confine the plugin to one music library section
   library_key?: string;
+}
+
+interface Genre {
+  key: string;
+  title: string;
 }
 
 interface MusicLibrary {
@@ -180,6 +186,8 @@ type PlayResult = { success: boolean; message?: string; count?: number; truncate
 const playPlaylist = callable<[string], PlayResult>("play_playlist");
 const playAlbum = callable<[string], PlayResult>("play_album");
 const playArtist = callable<[string], PlayResult>("play_artist");
+const getGenres = callable<[], { success: boolean; genres: Genre[] }>("get_genres");
+const playGenre = callable<[string], PlayResult>("play_genre");
 const getQueueWithImages = callable<[number, number], { success: boolean; tracks: Track[]; total: number; current_index: number }>("get_queue_with_images");
 
 // =============================================================================
@@ -936,6 +944,22 @@ function NowPlaying() {
               <FaSearch style={{ fontSize: "13px", color: theme.primary }} />
             </div>
             <RowText title="Search music" subtitle="Artists, albums and tracks" />
+            <FaChevronRight style={{ fontSize: "11px", color: theme.outline, flexShrink: 0 }} />
+          </RowButton>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <RowButton
+            onClick={() => Navigation.Navigate("/museck-genres")}
+            actionDescription="Browse genres"
+          >
+            <div style={{
+              width: "32px", height: "32px", borderRadius: theme.radiusSm,
+              background: theme.secondaryContainer, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <FaGuitar style={{ fontSize: "13px", color: theme.secondary }} />
+            </div>
+            <RowText title="Genres" subtitle="Shuffle a genre from your library" />
             <FaChevronRight style={{ fontSize: "11px", color: theme.outline, flexShrink: 0 }} />
           </RowButton>
         </PanelSectionRow>
@@ -1715,6 +1739,129 @@ function SearchPage() {
 }
 
 // =============================================================================
+// Genres Page
+// =============================================================================
+
+function GenresPage() {
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
+  const [starting, setStarting] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const result = await getGenres();
+        if (result.success) setGenres(result.genres);
+      } catch (e) {
+        console.error("Failed to load genres:", e);
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const handlePlay = async (genre: Genre) => {
+    setStarting(genre.key);
+    try {
+      const result = await playGenre(genre.key);
+      if (result.success) {
+        returnToPanel();
+      } else {
+        toaster.toast({
+          title: genre.title,
+          body: result.message || "Nothing to play in this genre",
+          icon: <FaMusic />,
+        });
+      }
+    } finally {
+      setStarting("");
+    }
+  };
+
+  // A large library can carry hundreds of genres, so filter rather than scroll
+  const needle = filter.trim().toLowerCase();
+  const shown = needle
+    ? genres.filter((g) => g.title.toLowerCase().includes(needle))
+    : genres;
+  const capped = shown.slice(0, 100);
+
+  return (
+    <PageShell>
+      <PanelSection>
+        <PageHeader
+          title="Genres"
+          subtitle={genres.length ? `${genres.length} in your library` : undefined}
+        />
+        {genres.length > 12 && (
+          <PanelSectionRow>
+            <TextField
+              label="Filter genres"
+              value={filter}
+              bShowClearAction={true}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </PanelSectionRow>
+        )}
+      </PanelSection>
+
+      {loading ? (
+        <PanelSection>
+          <PanelSectionRow>
+            <LoadingState label="Loading genres" />
+          </PanelSectionRow>
+        </PanelSection>
+      ) : capped.length > 0 ? (
+        <PanelSection>
+          {capped.map((genre) => (
+            <PanelSectionRow key={genre.key}>
+              <RowButton
+                onClick={() => handlePlay(genre)}
+                actionDescription={`Shuffle ${genre.title}`}
+              >
+                <div style={{
+                  width: "32px", height: "32px", borderRadius: theme.radiusSm,
+                  background: theme.secondaryContainer, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <FaGuitar style={{ fontSize: "12px", color: theme.secondary }} />
+                </div>
+                <RowText title={genre.title} />
+                {starting === genre.key ? (
+                  <span style={{ ...type.meta, color: theme.primary }}>Loading…</span>
+                ) : (
+                  <FaRandom style={{ fontSize: "11px", color: theme.primary, flexShrink: 0 }} />
+                )}
+              </RowButton>
+            </PanelSectionRow>
+          ))}
+          {shown.length > capped.length && (
+            <PanelSectionRow>
+              <div style={{
+                width: "100%", textAlign: "center", padding: "12px",
+                ...type.meta, color: theme.onSurfaceVariant,
+              }}>
+                + {shown.length - capped.length} more — refine the filter to narrow it down
+              </div>
+            </PanelSectionRow>
+          )}
+        </PanelSection>
+      ) : (
+        <PanelSection>
+          <PanelSectionRow>
+            <EmptyState
+              icon={<FaGuitar />}
+              title={needle ? "No matching genres" : "No genres found"}
+              subtitle={needle ? `Nothing matched "${filter}"` : "Your server reported none"}
+            />
+          </PanelSectionRow>
+        </PanelSection>
+      )}
+    </PageShell>
+  );
+}
+
+// =============================================================================
 // Queue Page
 // =============================================================================
 
@@ -2165,6 +2312,7 @@ export default definePlugin(() => {
   routerHook.addRoute("/museck-edit-server", () => <EditServerPage />, { exact: true });
   routerHook.addRoute("/museck-search", () => <SearchPage />, { exact: true });
   routerHook.addRoute("/museck-queue", () => <QueuePage />, { exact: true });
+  routerHook.addRoute("/museck-genres", () => <GenresPage />, { exact: true });
 
   // Load notification preference before starting watcher
   getSettings().then((settings) => {
@@ -2185,6 +2333,7 @@ export default definePlugin(() => {
       routerHook.removeRoute("/museck-edit-server");
       routerHook.removeRoute("/museck-search");
       routerHook.removeRoute("/museck-queue");
+      routerHook.removeRoute("/museck-genres");
       stopTrackWatcher();
     },
   };
