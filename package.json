@@ -16,7 +16,7 @@
     "plugin",
     "steam-deck"
   ],
-  "author": "Nezreka",
+  "author": "BoulderBadgeDad(Nezreka)",
   "license": "MIT",
   "devDependencies": {
     "@decky/rollup": "^1.0.1",
