@@ -1489,21 +1489,30 @@ class Plugin:
     def _get_audio_env(self):
         env = os.environ.copy()
         env["SDL_AUDIODRIVER"] = "pulse"
-        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
-        env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
-        env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
+        
+        # Dynamically find the correct Pulse socket for the active user
+        # (Decky runs as root, but the audio server runs under the user's UID)
+        import glob
+        pulse_sockets = glob.glob("/run/user/*/pulse/native")
+        if pulse_sockets:
+            pulse_socket = pulse_sockets[0]
+            uid = pulse_socket.split("/")[3]
+            env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
+            env["PULSE_SERVER"] = pulse_socket
+            env["PULSE_RUNTIME_PATH"] = f"/run/user/{uid}/pulse"
+        else:
+            # Fallback to 1000 if not found
+            env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+            env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
+            env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
 
         # Decky ships as a PyInstaller bundle, so plugins inherit
-        # LD_LIBRARY_PATH pointing at its unpacked libs (/tmp/_MEIxxxxxx).
-        # Handing that to a system binary makes it load Decky's bundled libssl
-        # instead of the system one; where the two disagree (Bazzite: libcurl
-        # wants OPENSSL_3.2.0) ffplay dies on startup. Every track then "plays"
-        # for zero seconds, which looks like the player skipping through the
-        # whole library. PyInstaller preserves any pre-existing value in
-        # <VAR>_ORIG, so restore that when present and otherwise drop the var.
-        for var in ("LD_LIBRARY_PATH", "LD_PRELOAD"):
+        # env vars pointing at its unpacked libs (/tmp/_MEIxxxxxx).
+        # Handing that to a system binary makes it load Decky's bundled libs
+        # instead of the system ones. We must restore the original values.
+        for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "SSL_CERT_DIR", "SSL_CERT_FILE"):
             original = env.pop(f"{var}_ORIG", None)
-            if original:
+            if original is not None:
                 env[var] = original
             else:
                 env.pop(var, None)
