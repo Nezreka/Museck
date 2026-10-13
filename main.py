@@ -12,6 +12,7 @@ import time
 import base64
 import hashlib
 import ssl
+import threading
 import decky
 import urllib.request
 import urllib.error
@@ -25,6 +26,12 @@ MAX_QUEUE_TRACKS = 2000
 
 # Reported to the media server when Museck identifies itself as a player.
 MUSECK_VERSION = "1.0"
+
+# Sent on every urllib request Museck makes. Without it urllib identifies
+# as "Python-urllib/<version>", which Cloudflare's WAF blocks by default —
+# a server behind a Cloudflare tunnel then 403s every API call (issue #11).
+# (The audio stream itself is fetched by ffplay, which sends its own UA.)
+USER_AGENT = f"Museck/{MUSECK_VERSION}"
 
 # How often to re-report progress while a track plays.
 PLAYBACK_REPORT_INTERVAL = 10
@@ -57,7 +64,10 @@ class MusicService:
 
     def _http_get(self, url: str, headers: dict = None, timeout: int = 10) -> bytes:
         """HTTP GET returning raw bytes."""
-        req = urllib.request.Request(url, headers=headers or {})
+        merged = {"User-Agent": USER_AGENT}
+        if headers:
+            merged.update(headers)
+        req = urllib.request.Request(url, headers=merged)
         with urllib.request.urlopen(req, timeout=timeout, context=self._ssl_ctx) as resp:
             return resp.read()
 
@@ -542,6 +552,7 @@ class JellyfinService(MusicService):
         headers = {
             "Authorization": 'MediaBrowser Client="Museck", Device="SteamDeck", DeviceId="museck-steamdeck", Version="1.0"',
             "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
         }
         body = json.dumps({"Username": self.username, "Pw": self.password}).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -803,6 +814,7 @@ class EmbyService(JellyfinService):
         headers = {
             "X-Emby-Authorization": 'MediaBrowser Client="Museck", Device="SteamDeck", DeviceId="museck-steamdeck", Version="1.0"',
             "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
         }
         body = json.dumps({"Username": self.username, "Pw": self.password}).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -885,6 +897,21 @@ class SubsonicService(MusicService):
         super().__init__(config)
         self.username = config.get("username", "")
         self.password = config.get("password", "")
+        # Scrobble bookkeeping for report_playback: the plugin reports every
+        # 10 seconds, but a play may only be submitted once, so remember what
+        # the current play instance has already sent. A play instance is
+        # identified by its track plus a position that never jumps backwards;
+        # a track change or a position reset (replay, loop) starts a new one.
+        self._report_track_id = ""
+        self._report_last_position = 0
+        self._now_playing_sent = False
+        self._scrobble_sent = False
+        # report_playback runs on executor threads and its callers are not
+        # mutually exclusive (the 1s status poll, play/pause/stop actions),
+        # so the latches above are only ever touched under this lock —
+        # a scrobble is a counter, not idempotent state like Plex's
+        # timeline, and two overlapping reports must not both submit.
+        self._report_lock = threading.Lock()
 
     def _auth_params(self) -> dict:
         salt = os.urandom(8).hex()
@@ -905,10 +932,110 @@ class SubsonicService(MusicService):
         qs = urllib.parse.urlencode(params)
         return f"{self.server_url}/rest/{endpoint}?{qs}"
 
-    def _api_get(self, endpoint: str, extra_params: dict = None) -> dict:
+    def _api_get(self, endpoint: str, extra_params: dict = None, timeout: int = 10) -> dict:
         url = self._api_url(endpoint, extra_params)
-        data = self._http_json(url)
+        data = self._http_json(url, timeout=timeout)
         return data.get("subsonic-response", {})
+
+    @staticmethod
+    def _scrobble_due(position_ms: int, duration_ms: int) -> bool:
+        """Whether a play has been heard long enough to count as a play.
+
+        The usual scrobble rule: half the track or four minutes, whichever
+        comes first, and never for tracks of 30 seconds or less. Position is
+        pause-adjusted listened time, so this measures hearing, not wall
+        clock since the track started. When the server gave no duration at
+        all, fall back to four minutes of actual listening.
+        """
+        if position_ms <= 0:
+            return False
+        if duration_ms <= 0:
+            return position_ms >= 240_000
+        if duration_ms <= 30_000:
+            return False
+        return position_ms >= min(duration_ms / 2, 240_000)
+
+    def _send_scrobble(self, track_id: str, submission: str):
+        """Call /rest/scrobble, treating a server-side rejection as a failure.
+
+        Subsonic-style APIs often answer HTTP 200 with
+        subsonic-response.status == "failed" — the latch logic below must
+        see that as a failure, or the play is latched as recorded and never
+        retried.
+        """
+        resp = self._api_get(
+            "scrobble", {"id": track_id, "submission": submission}, timeout=5)
+        if resp.get("status") == "failed":
+            error = resp.get("error", {}) if isinstance(resp.get("error"), dict) else {}
+            raise RuntimeError(
+                f"scrobble rejected by server: {error.get('message', 'unknown error')}")
+
+    def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
+        """Report playback via /rest/scrobble.
+
+        Without this the server only sees an anonymous stream download, so
+        nothing is recorded: no play count, no recently-played entry, and
+        nothing for the server's own Last.fm/ListenBrainz forwarding.
+
+        `submission=false` is the "now playing" notice, sent once when a
+        track starts. `submission=true` is the actual scrobble that bumps
+        the play count, sent exactly once per play, when the play has been
+        heard long enough to count (see _scrobble_due). The plugin reports
+        every 10 seconds, so both sends are latched per play instance.
+        """
+        if not rating_key:
+            return
+        with self._report_lock:
+            self._report_playback_locked(str(rating_key), state, position_ms, duration_ms)
+
+    def _report_playback_locked(self, track_id: str, state: str, position_ms, duration_ms):
+        position_ms = max(0, int(position_ms))
+        duration_ms = max(0, int(duration_ms))
+
+        # A track change, or the position jumping backwards (replay, loop,
+        # re-queuing the same track), is a new play instance.
+        if track_id != self._report_track_id or position_ms + 2_000 < self._report_last_position:
+            self._report_track_id = track_id
+            self._now_playing_sent = False
+            self._scrobble_sent = False
+        self._report_last_position = position_ms
+
+        # Latches are set before the send and restored on failure: the
+        # caller (Plugin._report_playback) never retries a report, so a
+        # failure must leave the latch unset, while concurrent reports
+        # serialised by the lock must never both submit. A failure is
+        # retried by the next scheduled report, not by this call.
+        if state == "playing":
+            if not self._now_playing_sent:
+                self._now_playing_sent = True
+                try:
+                    self._send_scrobble(track_id, "false")
+                except Exception:
+                    self._now_playing_sent = False
+                    raise
+            if not self._scrobble_sent and self._scrobble_due(position_ms, duration_ms):
+                self._scrobble_sent = True
+                try:
+                    self._send_scrobble(track_id, "true")
+                except Exception:
+                    self._scrobble_sent = False
+                    raise
+        elif state == "stopped":
+            # Backstop: a play that reached the threshold without a playing
+            # report landing on it (e.g. the final poll raced the track end)
+            # still counts. A play stopped early does not.
+            if not self._scrobble_sent and self._scrobble_due(position_ms, duration_ms):
+                self._scrobble_sent = True
+                try:
+                    self._send_scrobble(track_id, "true")
+                except Exception:
+                    self._scrobble_sent = False
+                    raise
+            # The next play must announce itself again. The scrobble latch
+            # clears via the new play's position reset (or track change);
+            # that always fires when a scrobble was possible, since being
+            # due requires position well past the 2s reset tolerance.
+            self._now_playing_sent = False
 
     def test_connection(self) -> dict:
         try:
@@ -2186,7 +2313,7 @@ class Plugin:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
-            req = urllib.request.Request(url)
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
                 image_data = response.read()
                 content_type = response.headers.get('Content-Type', 'image/jpeg')
