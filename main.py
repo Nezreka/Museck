@@ -48,6 +48,25 @@ async def _to_thread(func, *args, **kwargs):
     return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 
+def _is_counted_play(position_ms: int, duration_ms: int) -> bool:
+    """Whether a play has been heard long enough to count as a play.
+
+    The usual scrobble rule, shared by every backend that has a separate
+    "count this play" call: half the track or four minutes, whichever comes
+    first, and never for tracks of 30 seconds or less. Position is
+    pause-adjusted listened time, so this measures hearing, not wall clock
+    since the track started. When the server gave no duration at all, fall
+    back to four minutes of actual listening.
+    """
+    if position_ms <= 0:
+        return False
+    if duration_ms <= 0:
+        return position_ms >= 240_000
+    if duration_ms <= 30_000:
+        return False
+    return position_ms >= min(duration_ms / 2, 240_000)
+
+
 # =============================================================================
 # Music Service Abstraction Layer
 # =============================================================================
@@ -75,6 +94,15 @@ class MusicService:
         """HTTP GET returning parsed JSON."""
         data = self._http_get(url, headers, timeout)
         return json.loads(data.decode("utf-8"))
+
+    def _http_post(self, url: str, headers: dict, body: bytes, timeout: int = 10) -> bytes:
+        """HTTP POST returning raw bytes (many reporting endpoints answer 204)."""
+        merged = {"User-Agent": USER_AGENT}
+        if headers:
+            merged.update(headers)
+        req = urllib.request.Request(url, data=body, headers=merged, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout, context=self._ssl_ctx) as resp:
+            return resp.read()
 
     # --- Interface methods (must be overridden) ---
 
@@ -149,6 +177,15 @@ class PlexService(MusicService):
         # Stable per-installation id so Plex treats this as one returning
         # device rather than a new phantom player on every launch.
         self.client_id = config.get("client_id", "")
+        # Scrobble bookkeeping (see report_playback): a Plex scrobble is a
+        # counter, so it is latched once per play instance and only ever
+        # touched under this lock, exactly as in SubsonicService.
+        self._scrobble_track_id = ""
+        self._scrobble_last_position = 0
+        self._scrobble_sent = False
+        self._scrobble_lock = threading.Lock()
+        self._closed_track_id = ""
+        self._closed_position = 0
 
     def _client_headers(self) -> dict:
         """Identify Museck as a player, which is what makes Plex open a session."""
@@ -166,25 +203,80 @@ class PlexService(MusicService):
         }
 
     def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
-        """Report progress to /:/timeline.
+        """Report progress to /:/timeline, and scrobble a counted play.
 
-        Without this Plex only sees an anonymous file download, so nothing is
-        recorded: no active session, no play count, and nothing for Tautulli
-        or anything else watching sessions to pick up.
+        The timeline alone makes Plex open a session (Now Playing, resume
+        offset, Tautulli and anything else watching sessions) — but it does
+        not move the play count. Verified on a live PMS 1.43.4 (Oct 2026)
+        with this exact call shape: a timeline-only full play (stopped at
+        100%) left viewCount untouched, a scrobble alone set it to 1, and
+        timeline + scrobble + timeline-stop set it to exactly 1, no double
+        count. So a play that has been heard long enough to count (the
+        shared _is_counted_play rule) is also scrobbled, exactly once per
+        play instance. Note the scrobble `key` is the bare rating key —
+        the /library/metadata/… path form used for the timeline key is
+        answered 404 there.
         """
         if not rating_key:
             return
+        position_ms = max(0, int(position_ms))
+        duration_ms = max(0, int(duration_ms))
         params = {
             "ratingKey": str(rating_key),
             "key": f"/library/metadata/{rating_key}",
             "identifier": "com.plexapp.plugins.library",
             "state": state,
-            "time": str(max(0, int(position_ms))),
-            "duration": str(max(0, int(duration_ms))),
-            "playbackTime": str(max(0, int(position_ms))),
+            "time": str(position_ms),
+            "duration": str(duration_ms),
+            "playbackTime": str(position_ms),
         }
         url = f"{self.server_url}/:/timeline?{urllib.parse.urlencode(params)}"
         self._http_get(url, self._client_headers(), timeout=5)
+
+        if state not in ("playing", "stopped"):
+            return
+        with self._scrobble_lock:
+            track_id = str(rating_key)
+            # A track change, or the position jumping backwards (replay,
+            # loop, re-queuing the same track), is a new play instance.
+            new_instance = (track_id != self._scrobble_track_id
+                            or position_ms + 2_000 < self._scrobble_last_position)
+            if new_instance:
+                self._scrobble_track_id = track_id
+                self._scrobble_sent = False
+                self._closed_track_id = ""
+                self._closed_position = 0
+            elif state == "playing" and position_ms <= 2_000:
+                # A (re)start at the beginning, too small for the reset
+                # heuristic to have caught: it still ends the closed era.
+                self._closed_track_id = ""
+                self._closed_position = 0
+            elif (state == "playing" and track_id == self._closed_track_id
+                    and position_ms > 2_000 and position_ms + 2_000 >= self._closed_position):
+                # A report dispatched before this play was stopped, landing
+                # after it — its backjump would otherwise read as a fresh
+                # instance and scrobble a second time. (The timeline above
+                # has already been sent; this guards only the counter.)
+                return
+            self._scrobble_last_position = position_ms
+            if state == "stopped":
+                self._closed_track_id = track_id
+                self._closed_position = position_ms
+            if self._scrobble_sent or not _is_counted_play(position_ms, duration_ms):
+                return
+            # Latch before the send, restore on failure (the next scheduled
+            # report retries), as in SubsonicService.report_playback.
+            self._scrobble_sent = True
+            try:
+                scrobble_params = {
+                    "key": track_id,
+                    "identifier": "com.plexapp.plugins.library",
+                }
+                scrobble_url = f"{self.server_url}/:/scrobble?{urllib.parse.urlencode(scrobble_params)}"
+                self._http_get(scrobble_url, self._client_headers(), timeout=5)
+            except Exception:
+                self._scrobble_sent = False
+                raise
 
     def get_libraries(self) -> list:
         data = self._api_get("/library/sections")
@@ -543,6 +635,18 @@ class JellyfinService(MusicService):
         self.username = config.get("username", "")
         self.password = config.get("password", "")
         self._authenticated = bool(self.api_key and self.user_id)
+        # Playback-session bookkeeping for report_playback: the server keys
+        # a session on the auth identity, and a play instance gets one
+        # PlaySessionId, opened by /Sessions/Playing and closed by
+        # /Sessions/Playing/Stopped. Reports run on executor threads and
+        # start/stop ordering matters, so they are serialised by this lock.
+        self._report_lock = threading.Lock()
+        self._report_track_id = ""
+        self._report_last_position = 0
+        self._session_started = False
+        self._play_session_id = ""
+        self._closed_track_id = ""
+        self._closed_position = 0
 
     def _authenticate(self) -> dict:
         """Authenticate with username/password to get access token and user ID."""
@@ -597,6 +701,116 @@ class JellyfinService(MusicService):
             self._authenticated = False
             self._authenticate()
             return self._http_json(self._api_url(endpoint, extra_params), self._auth_headers())
+
+    def _api_post(self, endpoint: str, payload: dict) -> bytes:
+        """POST a JSON body, with the same token-expiry retry as _api_get."""
+        self._ensure_auth()
+        body = json.dumps(payload).encode("utf-8")
+
+        def post_once():
+            headers = dict(self._auth_headers())
+            headers["Content-Type"] = "application/json"
+            return self._http_post(self._api_url(endpoint), headers, body, timeout=5)
+
+        try:
+            return post_once()
+        except urllib.error.HTTPError as e:
+            if e.code not in (401, 403) or not self.username:
+                raise
+            decky.logger.info("Access token rejected, re-authenticating")
+            self._authenticated = False
+            self._authenticate()
+            return post_once()
+
+    def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
+        """Report playback to the /Sessions/Playing endpoints.
+
+        Without this the server only sees an anonymous stream download, so
+        nothing is recorded: no active session on the dashboard, no play
+        history, no play count. This is the standard session protocol the
+        official clients use — start announces the item, progress carries
+        the (pause-aware) position, stopped closes the session — and the
+        server itself decides what counts as a play from the positions it
+        receives. Every report carries PositionTicks: a stopped report
+        without one is read by the server as "played to completion".
+
+        Emby inherits this unchanged: same endpoints, with auth supplied by
+        its own _auth_headers/_authenticate overrides.
+        """
+        if not rating_key:
+            return
+        with self._report_lock:
+            self._report_playback_locked(str(rating_key), state, position_ms)
+
+    def _report_playback_locked(self, track_id: str, state: str, position_ms):
+        position_ms = max(0, int(position_ms))
+        ticks = position_ms * 10_000  # 100ns ticks, the MediaBrowser unit
+
+        # A track change, or the position jumping backwards (replay, loop,
+        # re-queuing the same track), is a new play instance and session.
+        new_instance = (track_id != self._report_track_id
+                        or position_ms + 2_000 < self._report_last_position)
+        if new_instance:
+            self._report_track_id = track_id
+            self._session_started = False
+            self._play_session_id = os.urandom(16).hex()
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif state == "playing" and position_ms <= 2_000:
+            # A (re)start at the beginning ends the closed era, even when
+            # the reset heuristic could not see it (previous position low).
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif (state == "playing" and track_id == self._closed_track_id
+                and position_ms > 2_000 and position_ms + 2_000 >= self._closed_position):
+            # A report dispatched before this play was stopped, landing
+            # after it: reopening would leave a zombie session on the
+            # server that nothing ever closes. A genuine replay restarts
+            # at position ~0, which is the reset case above.
+            return
+        self._report_last_position = position_ms
+
+        if state == "playing":
+            if not self._session_started:
+                if not self._play_session_id:
+                    # First ever play, or a fresh start after a stop closed
+                    # the previous session at a position too low for the
+                    # reset heuristic above to have caught.
+                    self._play_session_id = os.urandom(16).hex()
+                self._api_post("/Sessions/Playing", {
+                    "ItemId": track_id,
+                    "PlaySessionId": self._play_session_id,
+                    "CanSeek": False,
+                    "PlayMethod": "DirectPlay",
+                })
+                self._session_started = True
+            else:
+                self._api_post("/Sessions/Playing/Progress", {
+                    "ItemId": track_id,
+                    "PlaySessionId": self._play_session_id,
+                    "PositionTicks": ticks,
+                    "IsPaused": False,
+                    "CanSeek": False,
+                })
+        elif state == "paused":
+            if self._session_started:
+                self._api_post("/Sessions/Playing/Progress", {
+                    "ItemId": track_id,
+                    "PlaySessionId": self._play_session_id,
+                    "PositionTicks": ticks,
+                    "IsPaused": True,
+                    "CanSeek": False,
+                })
+        elif state == "stopped" and self._session_started:
+            self._api_post("/Sessions/Playing/Stopped", {
+                "ItemId": track_id,
+                "PlaySessionId": self._play_session_id,
+                "PositionTicks": ticks,
+            })
+            self._session_started = False
+            self._play_session_id = ""
+            self._closed_track_id = track_id
+            self._closed_position = position_ms
 
     def test_connection(self) -> dict:
         try:
@@ -906,6 +1120,8 @@ class SubsonicService(MusicService):
         self._report_last_position = 0
         self._now_playing_sent = False
         self._scrobble_sent = False
+        self._closed_track_id = ""
+        self._closed_position = 0
         # report_playback runs on executor threads and its callers are not
         # mutually exclusive (the 1s status poll, play/pause/stop actions),
         # so the latches above are only ever touched under this lock —
@@ -939,21 +1155,8 @@ class SubsonicService(MusicService):
 
     @staticmethod
     def _scrobble_due(position_ms: int, duration_ms: int) -> bool:
-        """Whether a play has been heard long enough to count as a play.
-
-        The usual scrobble rule: half the track or four minutes, whichever
-        comes first, and never for tracks of 30 seconds or less. Position is
-        pause-adjusted listened time, so this measures hearing, not wall
-        clock since the track started. When the server gave no duration at
-        all, fall back to four minutes of actual listening.
-        """
-        if position_ms <= 0:
-            return False
-        if duration_ms <= 0:
-            return position_ms >= 240_000
-        if duration_ms <= 30_000:
-            return False
-        return position_ms >= min(duration_ms / 2, 240_000)
+        """Whether a play has been heard long enough to count (shared rule)."""
+        return _is_counted_play(position_ms, duration_ms)
 
     def _send_scrobble(self, track_id: str, submission: str):
         """Call /rest/scrobble, treating a server-side rejection as a failure.
@@ -994,10 +1197,27 @@ class SubsonicService(MusicService):
 
         # A track change, or the position jumping backwards (replay, loop,
         # re-queuing the same track), is a new play instance.
-        if track_id != self._report_track_id or position_ms + 2_000 < self._report_last_position:
+        new_instance = (track_id != self._report_track_id
+                        or position_ms + 2_000 < self._report_last_position)
+        if new_instance:
             self._report_track_id = track_id
             self._now_playing_sent = False
             self._scrobble_sent = False
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif state == "playing" and position_ms <= 2_000:
+            # A (re)start at the beginning ends the closed era, even when
+            # the reset heuristic could not see it (previous position low).
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif (state == "playing" and track_id == self._closed_track_id
+                and position_ms > 2_000 and position_ms + 2_000 >= self._closed_position):
+            # A report dispatched before this play was stopped, landing
+            # after it: reopening the instance would announce (and could
+            # re-submit) a play that already ended. A genuine replay is
+            # never caught by this — it restarts at position ~0, which
+            # clears the closed markers above, not this branch.
+            return
         self._report_last_position = position_ms
 
         # Latches are set before the send and restored on failure: the
@@ -1036,6 +1256,8 @@ class SubsonicService(MusicService):
             # that always fires when a scrobble was possible, since being
             # due requires position well past the 2s reset tolerance.
             self._now_playing_sent = False
+            self._closed_track_id = track_id
+            self._closed_position = position_ms
 
     def test_connection(self) -> dict:
         try:
@@ -1993,6 +2215,13 @@ class Plugin:
             self.playback_state["queue_index"] = 0
             track = queue[0]
             await self.play_track(track.get("key"), track)
+        elif self.playback_state.get("current_track"):
+            # Nothing follows: the finished track is never closed out by a
+            # next track's play_track -> stop(), so report its end here.
+            # Backends that latch per play (scrobbles, sessions) treat this
+            # as the track's one stopped report; a later manual stop()
+            # re-reporting the same end is a no-op for them.
+            await self._report_playback("stopped")
 
     # =========================================================================
     # Queue Management
