@@ -1837,20 +1837,16 @@ class Plugin:
     # Audio Playback
     # =========================================================================
 
-    # Environment variables Decky's PyInstaller bundle rewrites to point
-    # at its own unpacked libraries and certs. A system binary spawned
-    # with them loads the bundle's libraries instead of the system's and
-    # dies at startup when the two disagree. Every track then "plays" for
-    # zero seconds and the queue races on in silence (issues #2/#5 on
-    # Bazzite, and the prime suspect again for #13: Decky 3.2.9 rebundled
-    # its whole backend, so a system that matched the old bundle can
-    # clash with the new one).
-    _BUNDLE_ENV_VARS = (
-        "LD_LIBRARY_PATH", "LD_PRELOAD",
-        "SSL_CERT_DIR", "SSL_CERT_FILE",
-        "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH",
-    )
-
+    # Decky's PyInstaller bundle puts its unpacked library dir on
+    # LD_LIBRARY_PATH, and a system binary spawned with that env loads
+    # the bundle's libraries instead of the system's. When the two
+    # disagree the binary dies at startup: every track "plays" for zero
+    # seconds and the queue races on in silence. That is issues #2/#5 on
+    # Bazzite, and the confirmed cause of #13: the Decky store build had
+    # no scrubbing at all, and Decky 3.2.9's rebundle newly ships a
+    # libstdc++ capped at GLIBCXX_3.4.30, older than the one SteamOS's
+    # ffmpeg stack is built against, so ffplay exits the instant it
+    # starts (reproduced against the extracted 3.2.10 bundle).
     @staticmethod
     def _is_bundle_path(entry: str) -> bool:
         """Whether one path entry points inside the PyInstaller bundle."""
@@ -1881,54 +1877,75 @@ class Plugin:
         return separator.join(entries)
 
     @classmethod
-    def _scrub_bundle_env(cls, env: dict) -> list:
-        """Remove every trace of the bundle from a child process env.
+    def _build_child_env(cls) -> tuple[dict, list]:
+        """Build the environment ffplay and pactl are spawned with.
 
-        Returns the bundle entries that were dropped, purely so the
-        caller can log how much scrubbing a launch actually needed.
+        The env is built from a whitelist, not scrubbed from the
+        inherited one: the plugin process inherits whatever Decky's
+        bundle (or the next Decky rebundle) puts in the environment,
+        and a scrub list can only remove variables somebody already
+        knows about. Starting from nothing and copying only what the
+        two consumers need means no bundle variable, known or not, can
+        reach a system binary. Bundle entries found anywhere in the
+        inherited path-carrying values are counted and returned,
+        purely so the caller can log how much the bundle tried to
+        hand down.
+
+        Returns (env, bundle_entries_kept_out).
         """
-        dropped = []
-        # Restore the pre-bundle value of each rewritten variable (stashed
-        # by PyInstaller under <name>_ORIG), or drop the variable outright.
-        for var in cls._BUNDLE_ENV_VARS:
-            original = env.pop(f"{var}_ORIG", None)
-            if original is not None:
-                env[var] = original
-            else:
-                env.pop(var, None)
-        # PyInstaller stashes a pre-bundle value under <name>_ORIG for
-        # anything else it rewrote. The only consumers of this env are
-        # ffplay and pactl, neither of which reads any *_ORIG key, and a
-        # missed stash key is exactly how the bundle leaks into a child
-        # that goes looking for it.
-        for key in [k for k in env if k.endswith("_ORIG")]:
-            env.pop(key, None)
-        # Even a restored value can still carry bundle entries when the
-        # loader itself was started from inside a bundle, so filter every
-        # variable that names a path or a list of paths.
-        for var in ("LD_LIBRARY_PATH", "PATH", "SSL_CERT_DIR",
-                    "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
-            if env.get(var):
-                dropped.extend(
-                    e for e in env[var].split(":")
+        source = os.environ
+        kept_out = []
+        env = {}
+        # PATH is consulted because pactl is resolved through it. It is
+        # copied with bundle entries filtered out: a bundle entry could
+        # otherwise shadow a system tool.
+        if source.get("PATH"):
+            kept_out.extend(
+                e for e in source["PATH"].split(":")
+                if e and cls._is_bundle_path(e))
+            filtered = cls._filter_bundle_entries(source["PATH"], ":")
+            if filtered.strip(":"):
+                env["PATH"] = filtered
+        for key in ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TZ",
+                    "XDG_CONFIG_HOME", "PULSE_COOKIE"):
+            if source.get(key):
+                env[key] = source[key]
+        # The one bundle-adjacent value worth restoring is the user's
+        # own library path from before Decky started, which PyInstaller
+        # stashes under LD_LIBRARY_PATH_ORIG (a custom ffmpeg install
+        # may genuinely need it). It is filtered like everything else,
+        # and the live LD_LIBRARY_PATH is never copied: on any current
+        # Decky that value is the bundle dir itself.
+        original_ld = source.get("LD_LIBRARY_PATH_ORIG")
+        if original_ld:
+            kept_out.extend(
+                e for e in original_ld.split(":")
+                if e and cls._is_bundle_path(e))
+            filtered = cls._filter_bundle_entries(original_ld, ":")
+            if filtered.strip(":"):
+                env["LD_LIBRARY_PATH"] = filtered
+        if source.get("LD_LIBRARY_PATH"):
+            kept_out.extend(
+                e for e in source["LD_LIBRARY_PATH"].split(":")
+                if e and cls._is_bundle_path(e))
+        # The remaining bundle-carrying values are never copied, but
+        # their bundle entries still count toward the tally: the log
+        # line should show everything the bundle tried to hand down,
+        # not only what rode in on the consulted values.
+        for var in ("SSL_CERT_DIR", "DYLD_LIBRARY_PATH",
+                    "DYLD_FALLBACK_LIBRARY_PATH"):
+            if source.get(var):
+                kept_out.extend(
+                    e for e in source[var].split(":")
                     if e and cls._is_bundle_path(e))
-                filtered = cls._filter_bundle_entries(env[var], ":")
-                if filtered.strip(":"):
-                    env[var] = filtered
-                else:
-                    env.pop(var, None)
-        if env.get("SSL_CERT_FILE") and cls._is_bundle_path(env["SSL_CERT_FILE"]):
-            dropped.append(env.pop("SSL_CERT_FILE"))
-        if env.get("LD_PRELOAD"):
-            # LD_PRELOAD entries are separated by spaces and/or colons.
-            entries = [e for e in re.split(r"[:\s]+", env["LD_PRELOAD"]) if e]
-            dropped.extend(e for e in entries if cls._is_bundle_path(e))
-            entries = [e for e in entries if not cls._is_bundle_path(e)]
-            if entries:
-                env["LD_PRELOAD"] = " ".join(entries)
-            else:
-                env.pop("LD_PRELOAD", None)
-        return dropped
+        for var in ("SSL_CERT_FILE",):
+            if source.get(var) and cls._is_bundle_path(source[var]):
+                kept_out.append(source[var])
+        if source.get("LD_PRELOAD"):
+            kept_out.extend(
+                e for e in re.split(r"[:\s]+", source["LD_PRELOAD"])
+                if e and cls._is_bundle_path(e))
+        return env, kept_out
 
     # How long a probe verdict may be reused, keyed additionally on the
     # socket file's mtime (a recreated socket re-probes at once). Neither
@@ -2004,7 +2021,12 @@ class Plugin:
         return candidates[0]
 
     def _get_audio_env(self):
-        env = os.environ.copy()
+        # Built from a whitelist (see _build_child_env): the inherited
+        # env carries Decky's bundle paths, and handing any of them to a
+        # system binary makes it load the bundle's libraries and die at
+        # startup. What was kept out is kept for play_track's launch log.
+        env, kept_out = self._build_child_env()
+        self._last_bundle_kept_out = kept_out
         env["SDL_AUDIODRIVER"] = "pulse"
 
         # Dynamically find the correct Pulse socket for the active user
@@ -2020,13 +2042,6 @@ class Plugin:
             env["XDG_RUNTIME_DIR"] = "/run/user/1000"
             env["PULSE_SERVER"] = "/run/user/1000/pulse/native"
             env["PULSE_RUNTIME_PATH"] = "/run/user/1000/pulse"
-
-        # Decky ships as a PyInstaller bundle, so plugins inherit
-        # env vars pointing at its unpacked libs (/tmp/_MEIxxxxxx).
-        # Handing that to a system binary makes it load Decky's bundled
-        # libs instead of the system ones, so the env is scrubbed clean.
-        # What was dropped is kept for the launch log line in play_track.
-        self._last_scrub_dropped = self._scrub_bundle_env(env)
         return env
 
     @staticmethod
@@ -2138,15 +2153,15 @@ class Plugin:
 
             # Record the launch context ffplay actually gets. When a track
             # dies instantly this line plus the ffplay.log tail say which
-            # leg failed (wrong socket, a bundle path that survived the
-            # scrub, a missing binary) instead of just that it failed.
+            # leg failed (wrong socket, a bundle path the whitelist let
+            # through, a missing binary) instead of just that it failed.
             # The stream URL is never logged: it carries the server token.
-            scrubbed = len(getattr(self, "_last_scrub_dropped", []))
+            kept_out = len(getattr(self, "_last_bundle_kept_out", []))
             decky.logger.info(
                 f"Launching {ffplay} with PULSE_SERVER={env.get('PULSE_SERVER')} "
                 f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR')} "
                 f"LD_LIBRARY_PATH={'set' if env.get('LD_LIBRARY_PATH') else 'unset'}"
-                + (f" scrubbed_bundle_entries={scrubbed}" if scrubbed else ""))
+                + (f" bundle_entries_kept_out={kept_out}" if kept_out else ""))
 
             ffplay_args = [ffplay, "-nodisp", "-autoexit", "-loglevel", "warning"]
             if stream_url.startswith(("http://", "https://")):
