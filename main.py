@@ -13,6 +13,8 @@ import base64
 import hashlib
 import ssl
 import threading
+import stat
+import sys
 import decky
 import urllib.request
 import urllib.error
@@ -1835,16 +1837,180 @@ class Plugin:
     # Audio Playback
     # =========================================================================
 
+    # Environment variables Decky's PyInstaller bundle rewrites to point
+    # at its own unpacked libraries and certs. A system binary spawned
+    # with them loads the bundle's libraries instead of the system's and
+    # dies at startup when the two disagree. Every track then "plays" for
+    # zero seconds and the queue races on in silence (issues #2/#5 on
+    # Bazzite, and the prime suspect again for #13: Decky 3.2.9 rebundled
+    # its whole backend, so a system that matched the old bundle can
+    # clash with the new one).
+    _BUNDLE_ENV_VARS = (
+        "LD_LIBRARY_PATH", "LD_PRELOAD",
+        "SSL_CERT_DIR", "SSL_CERT_FILE",
+        "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH",
+    )
+
+    @staticmethod
+    def _is_bundle_path(entry: str) -> bool:
+        """Whether one path entry points inside the PyInstaller bundle."""
+        if not entry:
+            return False
+        bundle = getattr(sys, "_MEIPASS", "") or ""
+        if bundle and (entry == bundle or entry.startswith(bundle + os.sep)):
+            return True
+        # One-file bundles unpack to a temp dir named _MEI plus a random
+        # suffix of at least 6 characters (tempfile.mkdtemp's shape). The
+        # _MEIPASS check above is the precise one in production; this
+        # pattern is only a fallback, and the length floor keeps it from
+        # eating real directories that merely start with _MEI.
+        return bool(re.search(r"(?:^|/)_MEI[0-9A-Za-z_]{6,}(?:/|$)", entry))
+
+    @classmethod
+    def _filter_bundle_entries(cls, value: str, separator: str) -> str:
+        """Drop bundle entries from a separated path list.
+
+        Empty entries are preserved: an empty element means "current
+        directory" to both the dynamic linker and PATH search, and the
+        pre-hardening code restored these values verbatim, so filtering
+        must not quietly change the search semantics. Callers treat a
+        result with nothing but separators left as an empty value.
+        """
+        entries = [e for e in value.split(separator)
+                   if not cls._is_bundle_path(e)]
+        return separator.join(entries)
+
+    @classmethod
+    def _scrub_bundle_env(cls, env: dict) -> list:
+        """Remove every trace of the bundle from a child process env.
+
+        Returns the bundle entries that were dropped, purely so the
+        caller can log how much scrubbing a launch actually needed.
+        """
+        dropped = []
+        # Restore the pre-bundle value of each rewritten variable (stashed
+        # by PyInstaller under <name>_ORIG), or drop the variable outright.
+        for var in cls._BUNDLE_ENV_VARS:
+            original = env.pop(f"{var}_ORIG", None)
+            if original is not None:
+                env[var] = original
+            else:
+                env.pop(var, None)
+        # PyInstaller stashes a pre-bundle value under <name>_ORIG for
+        # anything else it rewrote. The only consumers of this env are
+        # ffplay and pactl, neither of which reads any *_ORIG key, and a
+        # missed stash key is exactly how the bundle leaks into a child
+        # that goes looking for it.
+        for key in [k for k in env if k.endswith("_ORIG")]:
+            env.pop(key, None)
+        # Even a restored value can still carry bundle entries when the
+        # loader itself was started from inside a bundle, so filter every
+        # variable that names a path or a list of paths.
+        for var in ("LD_LIBRARY_PATH", "PATH", "SSL_CERT_DIR",
+                    "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
+            if env.get(var):
+                dropped.extend(
+                    e for e in env[var].split(":")
+                    if e and cls._is_bundle_path(e))
+                filtered = cls._filter_bundle_entries(env[var], ":")
+                if filtered.strip(":"):
+                    env[var] = filtered
+                else:
+                    env.pop(var, None)
+        if env.get("SSL_CERT_FILE") and cls._is_bundle_path(env["SSL_CERT_FILE"]):
+            dropped.append(env.pop("SSL_CERT_FILE"))
+        if env.get("LD_PRELOAD"):
+            # LD_PRELOAD entries are separated by spaces and/or colons.
+            entries = [e for e in re.split(r"[:\s]+", env["LD_PRELOAD"]) if e]
+            dropped.extend(e for e in entries if cls._is_bundle_path(e))
+            entries = [e for e in entries if not cls._is_bundle_path(e)]
+            if entries:
+                env["LD_PRELOAD"] = " ".join(entries)
+            else:
+                env.pop("LD_PRELOAD", None)
+        return dropped
+
+    # How long a probe verdict may be reused, keyed additionally on the
+    # socket file's mtime (a recreated socket re-probes at once). Neither
+    # verdict may latch for the life of the plugin: a negative from a
+    # transient moment (server mid-restart, a burnt 0.5s timeout under
+    # load) would otherwise skip a healthy socket forever, and a positive
+    # would keep trusting a socket whose server died. Negatives expire
+    # fast; positives last longer so the steady-state pactl calls stay
+    # probe-free.
+    _PULSE_PROBE_POSITIVE_TTL = 30.0
+    _PULSE_PROBE_NEGATIVE_TTL = 2.0
+
+    def _pulse_socket_answers(self, path: str) -> bool:
+        """Whether a Pulse socket file exists and takes a connection.
+
+        "Takes a connection" is kernel-level only: connect() completes
+        when a listening socket has backlog room, before any Pulse
+        handshake. That is enough to rank candidates (a socket whose
+        server is gone takes nothing), not a health check of the server
+        behind it.
+        """
+        try:
+            st = os.stat(path)
+        except OSError:
+            return False
+        if not stat.S_ISSOCK(st.st_mode):
+            return False
+        cache = getattr(self, "_pulse_probe_cache", None)
+        if cache is None:
+            cache = self._pulse_probe_cache = {}
+        cached = cache.get(path)
+        if cached is not None and cached[0] == st.st_mtime_ns:
+            ttl = (self._PULSE_PROBE_POSITIVE_TTL if cached[1]
+                   else self._PULSE_PROBE_NEGATIVE_TTL)
+            if time.monotonic() - cached[2] < ttl:
+                return cached[1]
+        answers = False
+        probe = None
+        try:
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            probe.settimeout(0.5)
+            probe.connect(path)
+            answers = True
+        except OSError:
+            answers = False
+        finally:
+            if probe is not None:
+                probe.close()
+        cache[path] = (st.st_mtime_ns, answers, time.monotonic())
+        return answers
+
+    def _find_pulse_socket(self) -> str:
+        """Pick the Pulse socket to use, preferring one that answers.
+
+        Falls back to the first candidate when none answer. A probe can
+        fail for reasons unrelated to playback (a server mid-restart), so
+        a failed probe must never leave playback worse off than the old
+        pick-the-first-glob-result behaviour. Returns "" when there are
+        no candidates at all.
+        """
+        import glob
+        candidates = sorted(glob.glob("/run/user/*/pulse/native"))
+        if not candidates:
+            return ""
+        # This process runs as the session user, so their socket is tried
+        # first. A stale socket from another session must not win just
+        # because glob happened to list it first.
+        own = f"/run/user/{os.getuid()}/pulse/native"
+        candidates.sort(key=lambda p: (p != own, p))
+        for candidate in candidates:
+            if self._pulse_socket_answers(candidate):
+                return candidate
+        return candidates[0]
+
     def _get_audio_env(self):
         env = os.environ.copy()
         env["SDL_AUDIODRIVER"] = "pulse"
-        
+
         # Dynamically find the correct Pulse socket for the active user
         # (Decky runs as root, but the audio server runs under the user's UID)
-        import glob
-        pulse_sockets = glob.glob("/run/user/*/pulse/native")
-        if pulse_sockets:
-            pulse_socket = pulse_sockets[0]
+        pulse_socket = self._find_pulse_socket()
+        if pulse_socket:
             uid = pulse_socket.split("/")[3]
             env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
             env["PULSE_SERVER"] = pulse_socket
@@ -1857,14 +2023,10 @@ class Plugin:
 
         # Decky ships as a PyInstaller bundle, so plugins inherit
         # env vars pointing at its unpacked libs (/tmp/_MEIxxxxxx).
-        # Handing that to a system binary makes it load Decky's bundled libs
-        # instead of the system ones. We must restore the original values.
-        for var in ("LD_LIBRARY_PATH", "LD_PRELOAD", "SSL_CERT_DIR", "SSL_CERT_FILE"):
-            original = env.pop(f"{var}_ORIG", None)
-            if original is not None:
-                env[var] = original
-            else:
-                env.pop(var, None)
+        # Handing that to a system binary makes it load Decky's bundled
+        # libs instead of the system ones, so the env is scrubbed clean.
+        # What was dropped is kept for the launch log line in play_track.
+        self._last_scrub_dropped = self._scrub_bundle_env(env)
         return env
 
     @staticmethod
@@ -1974,16 +2136,35 @@ class Plugin:
             log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
             env = self._get_audio_env()
 
+            # Record the launch context ffplay actually gets. When a track
+            # dies instantly this line plus the ffplay.log tail say which
+            # leg failed (wrong socket, a bundle path that survived the
+            # scrub, a missing binary) instead of just that it failed.
+            # The stream URL is never logged: it carries the server token.
+            scrubbed = len(getattr(self, "_last_scrub_dropped", []))
+            decky.logger.info(
+                f"Launching {ffplay} with PULSE_SERVER={env.get('PULSE_SERVER')} "
+                f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR')} "
+                f"LD_LIBRARY_PATH={'set' if env.get('LD_LIBRARY_PATH') else 'unset'}"
+                + (f" scrubbed_bundle_entries={scrubbed}" if scrubbed else ""))
+
+            ffplay_args = [ffplay, "-nodisp", "-autoexit", "-loglevel", "warning"]
+            if stream_url.startswith(("http://", "https://")):
+                # Identify as Museck, not ffplay's default Lavf agent:
+                # a server (or its WAF) that accepts Museck's API calls
+                # can still reject the stream fetch otherwise, the same
+                # split as issue #11. HTTP inputs only: ffplay warns
+                # "Option user_agent not found" for other inputs, and
+                # that warning would sit in ffplay.log where a later
+                # failure's reason is read from.
+                ffplay_args += ["-user_agent", USER_AGENT]
+            ffplay_args.append(stream_url)
+
             # ffplay inherits a dup of the fd, so the parent's handle can close
             # as soon as the process is spawned.
             with open(log_path, "w") as log_file:
-                self.player_process = subprocess.Popen([
-                    ffplay,
-                    "-nodisp",
-                    "-autoexit",
-                    "-loglevel", "warning",
-                    stream_url
-                ], stdout=subprocess.DEVNULL, stderr=log_file, env=env)
+                self.player_process = subprocess.Popen(
+                    ffplay_args, stdout=subprocess.DEVNULL, stderr=log_file, env=env)
 
             self.player_paused = False
             self.playback_start_time = time.time()
