@@ -41,7 +41,7 @@ import {
 // Types
 // =============================================================================
 
-type ServerType = "plex" | "jellyfin" | "emby" | "subsonic";
+type ServerType = "plex" | "jellyfin" | "emby" | "subsonic" | "soulsync";
 
 interface ServerConfig {
   id: string;
@@ -50,7 +50,7 @@ interface ServerConfig {
   server_url: string;
   // Plex
   token?: string;
-  // Jellyfin / Emby
+  // Jellyfin / Emby: exchanged during auth. SoulSync: the API key itself.
   api_key?: string;
   user_id?: string;
   // Subsonic / Navidrome
@@ -151,6 +151,48 @@ interface Artist {
   thumb: string;
 }
 
+interface ServerStatusSession {
+  title: string;
+  subtitle: string;
+  user: string;
+  state: string;
+  progress_pct: number;
+}
+
+// Normalized live status from the backend: the base fields exist for
+// every server type; the rest appear when the server offers them
+// (SoulSync reports the full set, mirroring its own status surfaces).
+interface ServerStatus {
+  success: boolean;
+  connected: boolean;
+  server_type?: string;
+  server_name?: string;
+  message?: string;
+  response_time_ms?: number;
+  checked_at?: number;
+  version?: string;
+  server_product?: string;
+  uptime?: string;
+  uptime_seconds?: number;
+  library?: { artists?: number; albums?: number; tracks?: number };
+  database_size_mb?: number;
+  active_downloads?: number;
+  services?: { spotify?: boolean; soulseek?: boolean; hydrabase?: boolean };
+  media_server?: { connected: boolean; type: string; response_time_ms?: number | null };
+  active_media_server?: string;
+  download_source?: string;
+  metadata_source?: string;
+  activity?: {
+    ok: boolean;
+    server_name?: string;
+    server_version?: string;
+    streams?: number;
+    transcodes?: number;
+    total_bandwidth_kbps?: number;
+    sessions?: ServerStatusSession[];
+  };
+}
+
 // =============================================================================
 // Backend Callable Functions
 // =============================================================================
@@ -165,6 +207,7 @@ const testServerConfig = callable<[ServerConfig], { success: boolean; message: s
 const discoverServers = callable<[], DiscoverResult>("discover_servers");
 const getLibraries = callable<[ServerConfig], { success: boolean; libraries: MusicLibrary[]; message?: string }>("get_libraries");
 const savePreference = callable<[string, boolean], { success: boolean }>("save_preference");
+const getServerStatus = callable<[string?], ServerStatus>("get_server_status");
 
 // Playback
 const togglePlayPause = callable<[], { success: boolean }>("toggle_play_pause");
@@ -206,6 +249,7 @@ const SERVER_TYPE_LABELS: Record<ServerType, string> = {
   jellyfin: "Jellyfin",
   emby: "Emby",
   subsonic: "Navidrome",
+  soulsync: "SoulSync",
 };
 
 const SERVER_TYPE_COLORS: Record<ServerType, string> = {
@@ -213,6 +257,7 @@ const SERVER_TYPE_COLORS: Record<ServerType, string> = {
   jellyfin: "#00a4dc",
   emby: "#52b54b",
   subsonic: "#0aa5ff",
+  soulsync: "#a259ff",
 };
 
 // Module-level variable for passing server config to edit page
@@ -1182,6 +1227,8 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
   const [serverUrl, setServerUrl] = useState(existingServer?.server_url || "");
   // Plex
   const [token, setToken] = useState(existingServer?.token || "");
+  // SoulSync
+  const [apiKey, setApiKey] = useState(existingServer?.api_key || "");
   // Jellyfin / Emby / Subsonic
   const [username, setUsername] = useState(existingServer?.username || "");
   const [password, setPassword] = useState(existingServer?.password || "");
@@ -1213,6 +1260,12 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     };
     if (serverType === "plex") {
       config.token = token;
+      // Written unconditionally: an empty value is how "All libraries"
+      // clears a previously saved scoping when save_server merges.
+      config.library_key = libraryKey;
+    } else if (serverType === "soulsync") {
+      // SoulSync authenticates with an API key alone, no user account.
+      config.api_key = apiKey;
     } else {
       // Jellyfin, Emby and Subsonic all authenticate with username/password
       config.username = username;
@@ -1220,8 +1273,10 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
     }
     // Carry forward the token exchanged during Jellyfin/Emby auth so saving an
     // edit doesn't discard it. The backend drops these if credentials changed.
-    if (credentials.api_key) config.api_key = credentials.api_key;
-    if (credentials.user_id) config.user_id = credentials.user_id;
+    if (serverType === "jellyfin" || serverType === "emby") {
+      if (credentials.api_key) config.api_key = credentials.api_key;
+      if (credentials.user_id) config.user_id = credentials.user_id;
+    }
     return config;
   };
 
@@ -1330,7 +1385,7 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
       {/* Server type */}
       {!isEditing ? (
         <PanelSection title="Server Type">
-          {(["plex", "jellyfin", "emby", "subsonic"] as ServerType[]).map((option) => {
+          {(["plex", "jellyfin", "emby", "subsonic", "soulsync"] as ServerType[]).map((option) => {
             const selected = serverType === option;
             const color = SERVER_TYPE_COLORS[option];
             return (
@@ -1398,6 +1453,18 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
                   value={token}
                   bIsPassword={true}
                   onChange={(e) => setToken(e.target.value)}
+                />
+              </PanelSectionRow>
+            )}
+
+            {serverType === "soulsync" && (
+              <PanelSectionRow>
+                <TextField
+                  label="SoulSync API key"
+                  description="Create one in SoulSync under Settings, then API keys. It starts with sk_"
+                  value={apiKey}
+                  bIsPassword={true}
+                  onChange={(e) => setApiKey(e.target.value)}
                 />
               </PanelSectionRow>
             )}
@@ -1496,7 +1563,7 @@ function ServerFormPage({ existingServer }: { existingServer?: ServerConfig | nu
           )}
 
           {/* Discovery */}
-          {serverType !== "subsonic" && (
+          {serverType !== "subsonic" && serverType !== "soulsync" && (
             <PanelSection title="Discovery">
               <PanelSectionRow>
                 <ButtonItem layout="below" onClick={handleDiscover} disabled={isDiscovering}>
@@ -2020,6 +2087,169 @@ function QueuePage() {
 // QAM Settings Component (Server Switcher)
 // =============================================================================
 
+// =============================================================================
+// Live Server Status
+// =============================================================================
+
+function useServerStatus(serverId: string, intervalMs = 10000) {
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+
+  useEffect(() => {
+    if (!serverId) {
+      setStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const result = await getServerStatus(serverId);
+        if (!cancelled) setStatus(result);
+      } catch (e) {
+        // Keep the last known status on a transient failure; the next
+        // poll recovers, or the backend reports the outage itself.
+      }
+    };
+    setStatus(null);
+    poll();
+    const interval = setInterval(poll, intervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [serverId, intervalMs]);
+
+  return status;
+}
+
+function StatusLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "5px" }}>
+      <span style={{ ...type.meta, color: theme.onSurfaceVariant, flexShrink: 0, minWidth: "86px" }}>{label}</span>
+      <span style={{ ...type.meta, color: theme.onSurface, ...ellipsis }}>{value}</span>
+    </div>
+  );
+}
+
+function ServerStatusCard({ status }: { status: ServerStatus | null }) {
+  const connected = status?.connected === true;
+  const dotColor = !status ? theme.outline : connected ? theme.success : theme.error;
+
+  const library = status?.library;
+  const libraryLine = library && (library.tracks != null || library.albums != null || library.artists != null)
+    ? `${(library.tracks ?? 0).toLocaleString()} tracks · ${(library.albums ?? 0).toLocaleString()} albums · ${(library.artists ?? 0).toLocaleString()} artists`
+    : null;
+
+  const services = status?.services;
+  const serviceChips: { name: string; on: boolean }[] = [];
+  if (services) {
+    if (services.spotify != null) serviceChips.push({ name: "Spotify", on: !!services.spotify });
+    if (services.soulseek != null) serviceChips.push({ name: "Soulseek", on: !!services.soulseek });
+    if (services.hydrabase != null) serviceChips.push({ name: "Hydrabase", on: !!services.hydrabase });
+  }
+
+  const media = status?.media_server;
+  const mediaLine = media
+    ? `${media.type || status?.active_media_server || "Media server"} · ${media.connected ? "Connected" : "Offline"}${media.response_time_ms != null ? ` · ${Math.round(media.response_time_ms)} ms` : ""}`
+    : null;
+
+  const activity = status?.activity;
+  const activityLine = activity
+    ? activity.ok
+      ? (activity.streams ?? 0) > 0
+        ? `${activity.streams} streaming now${activity.transcodes ? ` · ${activity.transcodes} transcoding` : ""}${activity.total_bandwidth_kbps ? ` · ${activity.total_bandwidth_kbps} kbps` : ""}`
+        : "Nothing streaming right now"
+      : "Media server unreachable"
+    : null;
+
+  const versionLine = [status?.server_product, status?.version ? `v${status.version}` : null]
+    .filter(Boolean).join(" ");
+
+  return (
+    <div style={{
+      width: "100%", background: theme.surfaceContainer,
+      borderRadius: theme.radiusMd, padding: "12px 14px",
+      border: `1px solid ${theme.outline}22`,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{
+          width: "7px", height: "7px", borderRadius: theme.radiusFull,
+          backgroundColor: dotColor, flexShrink: 0,
+          boxShadow: status && connected ? `0 0 8px ${theme.success}aa` : undefined,
+        }} />
+        <span style={{
+          ...type.label,
+          color: !status ? theme.onSurfaceVariant : connected ? theme.success : theme.error,
+        }}>
+          {!status ? "Checking" : connected ? "Live" : "Offline"}
+        </span>
+        {status?.response_time_ms != null && (
+          <span style={{ ...type.meta, color: theme.onSurfaceVariant, marginLeft: "auto" }}>
+            {status.response_time_ms} ms
+          </span>
+        )}
+      </div>
+
+      {!status && (
+        <div style={{ ...type.meta, color: theme.onSurfaceVariant, marginTop: "6px" }}>
+          Contacting the server…
+        </div>
+      )}
+      {status && !connected && (
+        <div style={{ ...type.meta, color: theme.error, marginTop: "6px" }}>
+          {status.message || "Server unreachable"}
+        </div>
+      )}
+      {status && connected && (
+        <>
+          {versionLine && <StatusLine label="Version" value={versionLine} />}
+          {status.uptime && <StatusLine label="Uptime" value={status.uptime} />}
+          {libraryLine && <StatusLine label="Library" value={libraryLine} />}
+          {status.active_downloads != null && (
+            <StatusLine label="Downloads" value={status.active_downloads > 0 ? `${status.active_downloads} active` : "Idle"} />
+          )}
+          {mediaLine && <StatusLine label="Media server" value={mediaLine} />}
+          {activityLine && <StatusLine label="Streaming" value={activityLine} />}
+          {serviceChips.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "9px" }}>
+              {serviceChips.map((chip) => (
+                <div key={chip.name} style={{
+                  display: "flex", alignItems: "center", gap: "5px",
+                  padding: "3px 8px", borderRadius: theme.radiusFull,
+                  background: theme.surfaceContainerHigh,
+                  border: `1px solid ${theme.outline}33`,
+                }}>
+                  <div style={{
+                    width: "5px", height: "5px", borderRadius: theme.radiusFull,
+                    backgroundColor: chip.on ? theme.success : theme.error,
+                  }} />
+                  <span style={{ ...type.meta, color: theme.onSurface }}>{chip.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {activity?.sessions && activity.sessions.length > 0 && activity.sessions.map((session, i) => (
+            <div key={i} style={{
+              marginTop: "7px", paddingTop: "7px",
+              borderTop: `1px solid ${theme.outline}22`,
+            }}>
+              <div style={{ ...type.meta, color: theme.onSurface, ...ellipsis }}>{session.title}</div>
+              <div style={{ ...type.meta, color: theme.onSurfaceVariant, ...ellipsis }}>
+                {[session.user, session.state, session.progress_pct ? `${Math.round(session.progress_pct)}%` : null]
+                  .filter(Boolean).join(" · ")}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+      {status?.checked_at != null && (
+        <div style={{ ...type.meta, color: theme.onSurfaceVariant, marginTop: "8px", opacity: 0.7 }}>
+          Updated {new Date(status.checked_at * 1000).toLocaleTimeString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Settings() {
   const [servers, setServers] = useState<ServerConfig[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -2027,6 +2257,7 @@ function Settings() {
   const [isTesting, setIsTesting] = useState(false);
   const [trackNotify, setTrackNotify] = useState(true);
   const [reportPlayback, setReportPlayback] = useState(true);
+  const liveStatus = useServerStatus(activeId);
 
   // Settings rarely change, but this panel stays mounted while the user edits
   // servers on the full-screen page — so keep polling, and skip the state
@@ -2117,6 +2348,13 @@ function Settings() {
             title="No server configured"
             subtitle="Add one to start listening"
           />
+        </PanelSectionRow>
+      )}
+
+      {/* Live status */}
+      {activeServer && (
+        <PanelSectionRow>
+          <ServerStatusCard status={liveStatus} />
         </PanelSectionRow>
       )}
 

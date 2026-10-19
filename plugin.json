@@ -9,7 +9,7 @@
     "tags": [
       "utility"
     ],
-    "description": "A Decky Loader plugin for Steam Deck to play tracks from Plex, Jellyfin, Emby, Navidrome, and Subsonic.",
+    "description": "A Decky Loader plugin for Steam Deck to play tracks from Plex, Jellyfin, Emby, Navidrome, Subsonic, and SoulSync.",
     "image": "https://i.imgur.com/RcVDD0T.png"
   }
 }

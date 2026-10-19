@@ -2,7 +2,7 @@
 
 A Decky Loader plugin that streams music from your media servers on Steam Deck.
 
-Supports **Plex**, **Jellyfin**, **Emby**, and **Navidrome** (Subsonic API).
+Supports **Plex**, **Jellyfin**, **Emby**, **Navidrome** (Subsonic API), and **SoulSync**.
 
 ## Features
 
@@ -14,6 +14,7 @@ Supports **Plex**, **Jellyfin**, **Emby**, and **Navidrome** (Subsonic API).
 - Track change notifications
 - Quick-switch between servers from the QAM
 - Auto-detect Plex, Jellyfin, and Emby servers on your local network
+- Live server status in the QAM: connection, response time, and (for SoulSync) uptime, library size, active downloads, the media server behind it, and what it is streaming
 
 ## Requirements
 
@@ -23,6 +24,7 @@ Supports **Plex**, **Jellyfin**, **Emby**, and **Navidrome** (Subsonic API).
   - **Jellyfin** server with music library
   - **Emby** server with music library
   - **Navidrome** or any Subsonic-compatible server
+  - **SoulSync** server with a music library
 
 ## Installation
 
@@ -51,8 +53,17 @@ Then copy `dist/`, `main.py`, `plugin.json`, `package.json`, and `LICENSE` to th
 | **Jellyfin** | Server URL, Username, Password |
 | **Emby** | Server URL, Username, Password |
 | **Navidrome** | Server URL, Username, Password |
+| **SoulSync** | Server URL, API Key |
 
 6. Test connection and save
+
+### Getting Your SoulSync API Key
+
+1. Open SoulSync and go to **Settings**
+2. Find the **API keys** section and create a key (it starts with `sk_`)
+3. Paste it into the SoulSync API key field in Museck
+
+SoulSync plays are recorded in SoulSync's listening history, and SoulSync playlists (both curated and mirrored) appear alongside the other servers' playlists.
 
 ### Getting Your Plex Token
 
@@ -82,7 +93,8 @@ You can add multiple servers of any type. Use the **Quick Switch** section in th
 - Seeking is not supported
 - Requires local network access to your media server
 - Remote access requires manual server URL configuration
-- Navidrome/Subsonic servers do not support auto-detection
+- Navidrome/Subsonic and SoulSync servers do not support auto-detection
+- SoulSync genre playback is assembled from album genre tags (SoulSync's API has no tracks-by-genre endpoint), so on very large libraries a genre may start from a partial scan
 
 ## License
 

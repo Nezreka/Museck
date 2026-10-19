@@ -160,6 +160,37 @@ class MusicService:
         """
         return
 
+    def get_server_status(self) -> dict:
+        """Live status for the status card: is the server answering, how
+        fast, and what is it called.
+
+        Backends with richer status surfaces override this and add their
+        sections (library counts, uptime, live sessions) on top of the
+        same base shape, so the frontend renders one normalized dict.
+        """
+        started = time.monotonic()
+        try:
+            result = self.test_connection()
+        except Exception as e:
+            result = {"success": False, "message": str(e)}
+        status = {
+            "success": True,
+            "connected": bool(result.get("success")),
+            "server_type": self.config.get("type", ""),
+            "server_name": result.get("server_name", ""),
+            "message": result.get("message", ""),
+            "response_time_ms": int((time.monotonic() - started) * 1000),
+            "checked_at": int(time.time()),
+        }
+        # Jellyfin/Emby test_connection returns the credentials its auth
+        # exchange produced; pass them through so the Plugin layer can
+        # persist them (the status callable pops them back out before
+        # anything reaches the frontend).
+        for field in ("api_key", "user_id"):
+            if result.get(field):
+                status[field] = result[field]
+        return status
+
 
 # =============================================================================
 # Plex Service
@@ -838,6 +869,22 @@ class JellyfinService(MusicService):
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
 
+    def get_server_status(self) -> dict:
+        status = super().get_server_status()
+        if status.get("connected"):
+            # /System/Info/Public is unauthenticated and carries the
+            # version; the base status only surfaces the server name.
+            try:
+                info = self._http_json(f"{self.server_url}/System/Info/Public", timeout=5)
+                if isinstance(info, dict):
+                    if info.get("Version"):
+                        status["version"] = info["Version"]
+                    if info.get("ProductName"):
+                        status["server_product"] = info["ProductName"]
+            except Exception:
+                pass
+        return status
+
     def discover_servers(self) -> list:
         """Discover Jellyfin servers via UDP broadcast on port 7359."""
         servers = []
@@ -1280,6 +1327,23 @@ class SubsonicService(MusicService):
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
 
+    def get_server_status(self) -> dict:
+        status = super().get_server_status()
+        if status.get("connected"):
+            # The ping payload names the server software and its version;
+            # test_connection folds them into the display name, the status
+            # card wants them as separate fields.
+            try:
+                resp = self._api_get("ping", timeout=5)
+                version = resp.get("serverVersion") or resp.get("version")
+                if version:
+                    status["version"] = version
+                if resp.get("type"):
+                    status["server_product"] = resp["type"]
+            except Exception:
+                pass
+        return status
+
     def get_playlists(self) -> list:
         resp = self._api_get("getPlaylists")
         playlists_data = resp.get("playlists", {}).get("playlist", [])
@@ -1436,6 +1500,752 @@ class SubsonicService(MusicService):
         }
 
 
+class SoulSyncService(MusicService):
+    """SoulSync backend.
+
+    SoulSync is itself the server here: Museck talks to its public API v1
+    (API-key auth; keys are created in SoulSync's Settings) for the
+    library, and to its long-standing web routes for streaming
+    (/stream/library-audio), play logging (/api/library/log-play) and
+    live status (/status, /api/server-activity) — the same surfaces
+    SoulSync's own UI and the Companion extension use.
+    """
+
+    # Genre play has no tracks-by-genre endpoint in the API, so albums
+    # are walked page by page and filtered client-side. Bound the walk so
+    # a huge library cannot turn one tap into minutes of paging.
+    _GENRE_PAGE_SIZE = 200
+    _GENRE_SCAN_MAX_PAGES = 25
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.api_key = config.get("api_key", "")
+        # Metadata for tracks this instance has parsed, keyed by track
+        # id. report_playback only receives a rating key, but SoulSync's
+        # log-play needs title/artist/album, so they are remembered at
+        # parse time.
+        self._track_meta = {}
+        # Album id -> {title, thumb_url, artist_id}, resolved lazily:
+        # track payloads carry no artwork and (on playlist endpoints) no
+        # album/artist names either; album payloads carry all three.
+        self._album_info_cache = {}
+        # Artist id -> name. Album payloads carry artist_id, not the name.
+        self._artist_names = {}
+        # Play-log bookkeeping, same latch discipline as the Subsonic
+        # scrobble: one log per play instance, set before the send and
+        # restored on failure.
+        self._report_track_id = ""
+        self._report_last_position = 0
+        self._log_sent = False
+        self._closed_track_id = ""
+        self._closed_position = 0
+        self._report_lock = threading.Lock()
+
+    # --- API plumbing ---------------------------------------------------
+
+    def _auth_headers(self) -> dict:
+        if self.api_key:
+            return {"Authorization": f"Bearer {self.api_key}"}
+        return {}
+
+    def _api_get(self, path: str, params: dict = None, timeout: int = 15):
+        """GET an API v1 endpoint and unwrap the {success, data} envelope."""
+        url = f"{self.server_url}/api/v1{path}"
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        payload = self._http_json(url, headers=self._auth_headers(), timeout=timeout)
+        if isinstance(payload, dict) and "success" in payload:
+            if not payload.get("success"):
+                error = payload.get("error") or {}
+                message = error.get("message") if isinstance(error, dict) else str(error)
+                raise RuntimeError(message or "SoulSync API error")
+            return payload.get("data") or {}
+        return payload
+
+    def _bare_get(self, path: str, timeout: int = 10) -> dict:
+        """GET a non-v1 SoulSync route (bare JSON) using api_key auth."""
+        sep = "&" if "?" in path else "?"
+        url = f"{self.server_url}{path}{sep}api_key={urllib.parse.quote(self.api_key)}"
+        data = self._http_json(url, timeout=timeout)
+        return data if isinstance(data, dict) else {}
+
+    # --- Connection ------------------------------------------------------
+
+    def test_connection(self) -> dict:
+        try:
+            # The v1 system status is the cheapest authenticated call:
+            # it proves the URL answers and the key is accepted.
+            self._api_get("/system/status", timeout=8)
+            return {"success": True, "message": "Connection successful", "server_name": "SoulSync"}
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return {"success": False, "message": "Invalid SoulSync API key. Create one in SoulSync under Settings, then API keys."}
+            if e.code == 429:
+                return {"success": False, "message": "SoulSync rate limit hit. Wait a moment and try again."}
+            return {"success": False, "message": f"HTTP error: {e.code} - {e.reason}"}
+        except urllib.error.URLError as e:
+            return {"success": False, "message": f"Cannot reach server: {e.reason}"}
+        except RuntimeError as e:
+            return {"success": False, "message": str(e)}
+        except Exception as e:
+            return {"success": False, "message": f"Connection error: {str(e)}"}
+
+    # --- Parsing ----------------------------------------------------------
+
+    def _parse_track(self, track: dict, album_title: str = "", album_thumb: str = ""):
+        """Convert an API v1 track payload to Museck's track shape.
+
+        Returns None for tracks that cannot be streamed: SoulSync streams
+        the file from its own disk (with a media-server fallback keyed by
+        track id), so a track with no file_path has nothing to play.
+        """
+        if not isinstance(track, dict):
+            return None
+        track_id = track.get("id")
+        file_path = str(track.get("file_path") or "").strip()
+        if track_id is None or not file_path:
+            return None
+        track_id = str(track_id)
+        album_id = track.get("album_id")
+        thumb = track.get("album_thumb_url") or track.get("thumb_url") or album_thumb or ""
+        if not thumb and album_id is not None:
+            # Track payloads carry no artwork; the album's does. Defer to
+            # get_image_url, which resolves and caches it per album.
+            thumb = f"ssalbum:{album_id}"
+        title = track.get("title") or "Unknown"
+        # Keep the raw (possibly empty) names in the metadata cache:
+        # playlist payloads do not join them (see _fill_track_names), and
+        # log-play must never record a placeholder as if it were truth.
+        artist = track.get("artist_name") or ""
+        album = track.get("album_title") or album_title or ""
+        if len(self._track_meta) > 5000:
+            self._track_meta.clear()
+        self._track_meta[track_id] = {
+            "title": title, "artist": artist, "album": album,
+            "album_id": album_id, "artist_id": track.get("artist_id"),
+        }
+        try:
+            duration = int(track.get("duration") or 0)
+        except (TypeError, ValueError):
+            duration = 0
+        return {
+            # The stream endpoint needs the file path, and the plugin only
+            # hands this key back to get_stream_url, so both the track id
+            # and the path ride in it.
+            "key": f"{track_id}::{file_path}",
+            "ratingKey": track_id,
+            "title": title,
+            "artist": artist or "Unknown",
+            "album": album or "Unknown",
+            "duration": duration,  # SoulSync stores duration in ms already
+            "index": track.get("track_number") or 0,
+            "thumb": str(thumb),
+            "parentThumb": str(thumb),
+        }
+
+    def _parse_tracks(self, tracks, album_title: str = "", album_thumb: str = "") -> list:
+        parsed = []
+        for track in tracks or []:
+            item = self._parse_track(track, album_title, album_thumb)
+            if item:
+                parsed.append(item)
+        return parsed
+
+    def _artist_name(self, artist_id, budget: list = None) -> str:
+        """Resolve an artist id to its name, cached, softly capped.
+
+        Failures are NOT cached: a transient error (a network blip, a
+        rate-limit 429) must not blank the name for the whole session —
+        the next caller retries, like the plugin's thumb hydration does.
+        `budget`, when given, is a one-element list of lookups the caller
+        still allows; only cache misses spend it.
+        """
+        if artist_id is None:
+            return ""
+        key = str(artist_id)
+        if key in self._artist_names:
+            return self._artist_names[key]
+        if len(self._artist_names) >= 64:
+            return ""
+        if budget is not None:
+            if budget[0] <= 0:
+                return ""
+            budget[0] -= 1
+        try:
+            data = self._api_get(f"/library/artists/{key}")
+        except Exception:
+            return ""
+        name = (data.get("artist") or {}).get("name") or ""
+        self._artist_names[key] = name
+        return name
+
+    def _album_info(self, album_id, budget: list = None) -> dict:
+        """Album {title, thumb_url, artist_id} by id, cached.
+
+        Same failure/budget discipline as _artist_name: only successful
+        lookups are cached.
+        """
+        if album_id is None:
+            return {}
+        key = str(album_id)
+        if key in self._album_info_cache:
+            return self._album_info_cache[key]
+        if budget is not None:
+            if budget[0] <= 0:
+                return {}
+            budget[0] -= 1
+        try:
+            data = self._api_get(f"/library/albums/{key}")
+        except Exception:
+            return {}
+        album = data.get("album") or {}
+        info = {
+            "title": album.get("title") or "",
+            "thumb_url": album.get("thumb_url") or "",
+            "artist_id": album.get("artist_id"),
+        }
+        self._album_info_cache[key] = info
+        return info
+
+    def _fill_track_names(self, track: dict, budget: list):
+        """Fill a parsed track's Unknown artist/album from its ids.
+
+        Playlist payloads are the gap: curated rows join neither name,
+        mirrored rows only the artist. Every row carries album_id and
+        artist_id, so resolve through the cached lookups. Tracks the
+        budget runs out on keep their placeholders for display; play
+        reporting still recovers the real names per track (see
+        _send_log_play), so history is never polluted with them.
+        """
+        meta = self._track_meta.get(track["ratingKey"]) or {}
+        album_id = meta.get("album_id")
+        artist_id = meta.get("artist_id")
+        if track["album"] == "Unknown" and album_id is not None:
+            info = self._album_info(album_id, budget)
+            if info.get("title"):
+                track["album"] = info["title"]
+                meta["album"] = info["title"]
+            if artist_id is None:
+                artist_id = info.get("artist_id")
+        if track["artist"] == "Unknown" and artist_id is not None:
+            name = self._artist_name(artist_id, budget)
+            if name:
+                track["artist"] = name
+                meta["artist"] = name
+
+    def _parse_album(self, album: dict, resolve_artist: bool = False) -> dict:
+        artist = album.get("artist_name") or ""
+        if not artist and resolve_artist:
+            artist = self._artist_name(album.get("artist_id"))
+        return {
+            "key": str(album.get("id", "")),
+            "title": album.get("title", "Unknown"),
+            "artist": artist or "Unknown",
+            "year": album.get("year"),
+            "thumb": album.get("thumb_url") or "",
+        }
+
+    # --- Library ----------------------------------------------------------
+
+    def get_playlists(self) -> list:
+        """Curated and mirrored playlists, told apart by key prefix.
+
+        SoulSync keeps the two in separate endpoints with separate id
+        spaces; the prefix routes get_playlist_tracks to the right one.
+        One family failing must not hide the other.
+        """
+        playlists = []
+        errors = []
+        try:
+            data = self._api_get("/library/playlists")
+            for pl in data.get("playlists", []):
+                playlists.append({
+                    "key": f"curated:{pl.get('id')}",
+                    "title": pl.get("name", "Unknown"),
+                    "duration": 0,
+                    "count": pl.get("track_count", 0),
+                    "thumb": "",
+                })
+        except Exception as e:
+            errors.append(e)
+        try:
+            data = self._api_get("/library/mirrored-playlists")
+            for pl in data.get("playlists", []):
+                playlists.append({
+                    "key": f"mirrored:{pl.get('id')}",
+                    "title": pl.get("name", "Unknown"),
+                    "duration": 0,
+                    "count": pl.get("track_count", 0),
+                    "thumb": pl.get("cover_url") or "",
+                })
+        except Exception as e:
+            errors.append(e)
+        if errors and not playlists:
+            raise errors[0]
+        return playlists
+
+    def get_playlist_tracks(self, playlist_key: str) -> list:
+        kind, _, pid = str(playlist_key).partition(":")
+        if kind == "mirrored":
+            data = self._api_get(f"/library/mirrored-playlists/{pid}/tracks")
+        else:
+            data = self._api_get(f"/library/playlists/{pid or playlist_key}/tracks")
+        tracks = self._parse_tracks(data.get("tracks", []))[:MAX_QUEUE_TRACKS]
+        # Playlist rows lack joined names (curated: both, mirrored: the
+        # album), so fill them from the album/artist lookups. The budget
+        # bounds fresh lookups per load — the API allows 60 requests a
+        # minute, and a huge playlist must not spend it all on names;
+        # cached lookups are free and do not count against it.
+        budget = [50]
+        for track in tracks:
+            if track["artist"] == "Unknown" or track["album"] == "Unknown":
+                self._fill_track_names(track, budget)
+        return tracks
+
+    def search_tracks(self, query: str) -> list:
+        """Library track search.
+
+        The API searches one field per call (title or artist) and
+        requires at least one, so a Museck search runs both and merges,
+        title matches first. (The API's /search endpoints search
+        external metadata providers, not the library, so they are not
+        used here: their results have nothing to stream.)
+        """
+        results = []
+        seen = set()
+        errors = []
+        for params in ({"title": query}, {"artist": query}):
+            try:
+                data = self._api_get("/library/tracks", {**params, "limit": 50})
+            except Exception as e:
+                errors.append(e)
+                continue
+            for item in self._parse_tracks(data.get("tracks", [])):
+                if item["ratingKey"] not in seen:
+                    seen.add(item["ratingKey"])
+                    results.append(item)
+        if errors and not results:
+            raise errors[0]
+        return results[:30]
+
+    def search_albums(self, query: str) -> list:
+        data = self._api_get("/library/albums", {"search": query, "limit": 30})
+        return [self._parse_album(a, resolve_artist=True) for a in data.get("albums", [])]
+
+    def search_artists(self, query: str) -> list:
+        data = self._api_get("/library/artists", {"search": query, "limit": 30})
+        artists = []
+        for artist in data.get("artists", []):
+            artists.append({
+                "key": str(artist.get("id", "")),
+                "title": artist.get("name", "Unknown"),
+                "thumb": artist.get("thumb_url") or "",
+            })
+        return artists
+
+    def get_album_tracks(self, album_key: str) -> list:
+        # The album endpoint embeds its tracks plus the album's own
+        # title and artwork, which track rows alone do not carry.
+        data = self._api_get(f"/library/albums/{album_key}")
+        album = data.get("album") or {}
+        return self._parse_tracks(
+            data.get("tracks", []),
+            album_title=album.get("title", ""),
+            album_thumb=album.get("thumb_url") or "",
+        )[:MAX_QUEUE_TRACKS]
+
+    def get_artist_tracks(self, artist_key: str) -> list:
+        # The artist endpoint embeds the album list; each album's tracks
+        # come from the album endpoint, in album order.
+        data = self._api_get(f"/library/artists/{artist_key}")
+        artist_name = (data.get("artist") or {}).get("name") or ""
+        if artist_name:
+            self._artist_names[str(artist_key)] = artist_name
+        all_tracks = []
+        for album in data.get("albums", []):
+            try:
+                album_data = self._api_get(f"/library/albums/{album.get('id')}")
+            except Exception:
+                continue
+            album_obj = album_data.get("album") or album
+            tracks = self._parse_tracks(
+                album_data.get("tracks", []),
+                album_title=album_obj.get("title", ""),
+                album_thumb=album_obj.get("thumb_url") or "",
+            )
+            for track in tracks:
+                if track["artist"] == "Unknown" and artist_name:
+                    track["artist"] = artist_name
+                    self._track_meta[track["ratingKey"]] = {
+                        "title": track["title"], "artist": artist_name,
+                        "album": track["album"],
+                    }
+            all_tracks.extend(tracks)
+            if len(all_tracks) >= MAX_QUEUE_TRACKS:
+                break
+        return all_tracks[:MAX_QUEUE_TRACKS]
+
+    def get_genres(self) -> list:
+        data = self._api_get("/library/genres", {"source": "albums"})
+        genres = []
+        for entry in data.get("genres", []):
+            name = entry.get("name") if isinstance(entry, dict) else entry
+            if name:
+                genres.append({"key": name, "title": name})
+        return sorted(genres, key=lambda g: g["title"].lower())
+
+    def get_genre_tracks(self, genre_key: str) -> list:
+        """Tracks for a genre, assembled client-side.
+
+        The API lists genres and tags albums with them, but has no
+        tracks-by-genre endpoint, so walk the album list, keep albums
+        tagged with the genre, and queue their tracks. The walk is
+        bounded; on a library larger than the bound a genre may come
+        back partial rather than complete.
+        """
+        wanted = str(genre_key).strip().lower()
+        tracks = []
+        for page in range(1, self._GENRE_SCAN_MAX_PAGES + 1):
+            try:
+                data = self._api_get("/library/albums", {
+                    "limit": self._GENRE_PAGE_SIZE, "page": page})
+            except Exception:
+                # A failure mid-walk (the 60/min API budget is the usual
+                # suspect on big libraries) degrades to what was already
+                # gathered instead of discarding it; with nothing
+                # gathered the error is the caller's to see.
+                if tracks:
+                    break
+                raise
+            albums = data.get("albums", [])
+            if not albums:
+                break
+            for album in albums:
+                genres = album.get("genres") or []
+                if not any(str(g).strip().lower() == wanted for g in genres):
+                    continue
+                try:
+                    album_data = self._api_get(f"/library/albums/{album.get('id')}")
+                except Exception:
+                    continue
+                album_obj = album_data.get("album") or album
+                tracks.extend(self._parse_tracks(
+                    album_data.get("tracks", []),
+                    album_title=album_obj.get("title", ""),
+                    album_thumb=album_obj.get("thumb_url") or ""))
+                if len(tracks) >= MAX_QUEUE_TRACKS:
+                    return tracks[:MAX_QUEUE_TRACKS]
+            if len(albums) < self._GENRE_PAGE_SIZE:
+                break
+        return tracks[:MAX_QUEUE_TRACKS]
+
+    # --- Streaming and artwork --------------------------------------------
+
+    def get_stream_url(self, track_key: str) -> str:
+        track_id, _, file_path = str(track_key).partition("::")
+        if not file_path:
+            # A plain key with no embedded path: treat it as the path.
+            track_id, file_path = "", track_id
+        params = {"path": file_path, "api_key": self.api_key}
+        if track_id:
+            # Lets SoulSync fall back to its media-server proxy when the
+            # file is not on its own disk.
+            params["track_id"] = track_id
+        qs = urllib.parse.urlencode(params)
+        return f"{self.server_url}/stream/library-audio?{qs}"
+
+    def _with_api_key(self, url: str) -> str:
+        if "api_key=" in url:
+            return url
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}api_key={urllib.parse.quote(self.api_key)}"
+
+    def _proxied_image_url(self, raw_url: str) -> str:
+        """Route a raw stored artwork URL through SoulSync's image proxy,
+        which is what SoulSync's own UI and the extension do: the proxy
+        normalizes media-server art (minting the tokens it needs)
+        server-side instead of the client fetching it directly."""
+        qs = urllib.parse.urlencode({"url": raw_url, "api_key": self.api_key})
+        return f"{self.server_url}/api/image-proxy?{qs}"
+
+    @staticmethod
+    def _is_internal_art_url(url: str) -> bool:
+        """Artwork URLs only the media server (or its LAN) serves sanely."""
+        lowered = url.lower()
+        if any(marker in lowered for marker in (
+                "/library/metadata/", "/items/", "/rest/getcoverart")):
+            return True
+        host = urllib.parse.urlparse(url).hostname or ""
+        if host in ("localhost", "host.docker.internal") or "." not in host:
+            # Loopback aliases, Docker's host gateway, and single-label
+            # LAN hostnames are all names only the server's own network
+            # resolves — the same set SoulSync's own normalizer treats
+            # as internal.
+            return True
+        if host.startswith(("127.", "10.", "192.168.")):
+            return True
+        if host.startswith("172."):
+            try:
+                return 16 <= int(host.split(".")[1]) <= 31
+            except (IndexError, ValueError):
+                return False
+        return False
+
+    def get_image_url(self, thumb_id: str, width: int = 100, height: int = 100) -> str:
+        if not thumb_id:
+            return ""
+        thumb_id = str(thumb_id)
+        if thumb_id.startswith("data:"):
+            return thumb_id
+        if thumb_id.startswith("ssalbum:"):
+            return self._album_image_url(thumb_id[len("ssalbum:"):])
+        if thumb_id.startswith(("http://", "https://")):
+            if thumb_id.startswith(self.server_url) and "/api/" in thumb_id:
+                return self._with_api_key(thumb_id)
+            if self._is_internal_art_url(thumb_id):
+                return self._proxied_image_url(thumb_id)
+            # Public artwork (metadata-provider CDNs) fetches directly.
+            return thumb_id
+        if thumb_id.startswith("/"):
+            if thumb_id.startswith("/api/"):
+                return self._with_api_key(f"{self.server_url}{thumb_id}")
+            # Media-server-relative paths (/library/..., /Items/...) have
+            # no base URL resolvable from here; the art slot falls back to
+            # its placeholder rather than a broken request.
+            return ""
+        return ""
+
+    def _album_image_url(self, album_id: str) -> str:
+        raw = self._album_info(album_id).get("thumb_url") or ""
+        if not raw or raw.startswith("ssalbum:"):
+            # A stored value is a real URL, never another ssalbum:
+            # reference; guard anyway so corrupt data degrades to no
+            # art instead of recursing.
+            return ""
+        # Recurse once to resolve the stored URL's own form.
+        return self.get_image_url(raw)
+
+    # --- Play reporting ------------------------------------------------------
+
+    def report_playback(self, rating_key: str, state: str, position_ms: int, duration_ms: int):
+        """Record counted plays in SoulSync's listening history.
+
+        SoulSync's log-play is a play counter, not a session protocol:
+        there is no start/progress/stop handshake, a POST simply records
+        that a track was played. So, like the Subsonic scrobble, it is
+        sent exactly once per play instance, when the play has been heard
+        long enough to count (the shared rule in _is_counted_play), from
+        either a playing report or the stopped backstop.
+        """
+        if not rating_key:
+            return
+        with self._report_lock:
+            self._report_playback_locked(str(rating_key), state, position_ms, duration_ms)
+
+    def _report_playback_locked(self, track_id: str, state: str, position_ms, duration_ms):
+        position_ms = max(0, int(position_ms))
+        duration_ms = max(0, int(duration_ms))
+
+        # A track change, or the position jumping backwards (replay,
+        # loop, re-queuing the same track), is a new play instance.
+        new_instance = (track_id != self._report_track_id
+                        or position_ms + 2_000 < self._report_last_position)
+        if new_instance:
+            self._report_track_id = track_id
+            self._log_sent = False
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif state == "playing" and position_ms <= 2_000:
+            # A (re)start at the beginning ends the closed era, even when
+            # the reset heuristic could not see it.
+            self._closed_track_id = ""
+            self._closed_position = 0
+        elif (state == "playing" and track_id == self._closed_track_id
+                and position_ms > 2_000 and position_ms + 2_000 >= self._closed_position):
+            # A report dispatched before this play was stopped, landing
+            # after it: the play already ended, do not log it twice.
+            return
+        self._report_last_position = position_ms
+
+        if state in ("playing", "stopped"):
+            # The latch is set before the send and restored on failure:
+            # the caller never retries a report, so a failure must leave
+            # the latch unset for the next scheduled report, while the
+            # lock keeps concurrent reports from both sending.
+            if not self._log_sent and _is_counted_play(position_ms, duration_ms):
+                self._log_sent = True
+                try:
+                    self._send_log_play(track_id, duration_ms)
+                except Exception:
+                    self._log_sent = False
+                    raise
+            if state == "stopped":
+                self._closed_track_id = track_id
+                self._closed_position = position_ms
+
+    def _send_log_play(self, track_id: str, duration_ms: int):
+        meta = self._track_meta.get(track_id)
+        if meta is None or not meta.get("artist") or not meta.get("album"):
+            # Either the track was never parsed by this instance (the
+            # service is re-resolved when settings change), or it was
+            # parsed from a playlist payload, which joins no names. The
+            # track endpoint joins both, so recover what's missing. With
+            # no cached meta at all a failure propagates, so the latch
+            # restores and a later report retries; with a cached title a
+            # failed recovery must not lose the play itself.
+            try:
+                data = self._api_get(f"/library/tracks/{track_id}")
+                found = data.get("track") or {}
+                recovered = {
+                    "title": found.get("title") or "",
+                    "artist": found.get("artist_name") or "",
+                    "album": found.get("album_title") or "",
+                }
+            except Exception:
+                if meta is None:
+                    raise
+                recovered = {}
+            if meta is None:
+                meta = {**recovered, "album_id": None, "artist_id": None}
+                self._track_meta[track_id] = meta
+            else:
+                for field in ("title", "artist", "album"):
+                    if not meta.get(field) and recovered.get(field):
+                        meta[field] = recovered[field]
+        if not meta.get("title"):
+            # log-play builds its history row from the title; with none
+            # there is nothing truthful to record.
+            return
+        payload_track = {
+            "title": meta["title"],
+            "artist": meta.get("artist", ""),
+            "album": meta.get("album", ""),
+        }
+        if track_id.isdigit():
+            payload_track["id"] = int(track_id)
+        body = json.dumps({
+            "track": payload_track,
+            "duration_ms": int(duration_ms),
+        }).encode("utf-8")
+        url = (f"{self.server_url}/api/library/log-play"
+               f"?api_key={urllib.parse.quote(self.api_key)}")
+        response = self._http_post(
+            url, {"Content-Type": "application/json"}, body, timeout=5)
+        # The route answers failures as HTTP 200 with
+        # {"success": false}; treat that as a failure so the latch
+        # restores and a later report retries, instead of recording a
+        # play SoulSync actually refused.
+        try:
+            outcome = json.loads(response.decode("utf-8")) if response else {}
+        except Exception:
+            outcome = {}
+        if isinstance(outcome, dict) and outcome.get("success") is False:
+            raise RuntimeError("SoulSync rejected the play log")
+
+    # --- Live status ----------------------------------------------------------
+
+    def get_server_status(self) -> dict:
+        """Live status, aggregated the way SoulSync's own UI and the
+        Companion extension see it: v1 system status for uptime and
+        service health, v1 stats for library size and active downloads,
+        the /status payload for the media server behind SoulSync, and
+        server-activity for what that server is streaming right now.
+
+        Every section is best-effort: a section that fails is simply
+        absent, never fatal to the rest.
+        """
+        started = time.monotonic()
+        status = {
+            "success": True,
+            "connected": False,
+            "server_type": "soulsync",
+            "server_name": "SoulSync",
+            "message": "",
+            "checked_at": int(time.time()),
+        }
+        try:
+            system = self._api_get("/system/status", timeout=8)
+            status["connected"] = True
+            status["uptime"] = system.get("uptime", "")
+            status["uptime_seconds"] = system.get("uptime_seconds", 0)
+            services = system.get("services") or {}
+            status["services"] = {
+                "spotify": bool(services.get("spotify")),
+                "soulseek": bool(services.get("soulseek")),
+                "hydrabase": bool(services.get("hydrabase")),
+            }
+        except urllib.error.HTTPError as e:
+            status["message"] = ("Invalid SoulSync API key" if e.code in (401, 403)
+                                 else f"HTTP error: {e.code}")
+        except Exception as e:
+            status["message"] = str(e)
+        status["response_time_ms"] = int((time.monotonic() - started) * 1000)
+        if not status["connected"]:
+            return status
+
+        try:
+            stats = self._api_get("/system/stats", timeout=8)
+            if stats.get("library"):
+                status["library"] = stats["library"]
+            database = stats.get("database") or {}
+            if database.get("size_mb") is not None:
+                status["database_size_mb"] = database["size_mb"]
+            downloads = stats.get("downloads") or {}
+            if downloads.get("active") is not None:
+                status["active_downloads"] = downloads["active"]
+        except Exception:
+            pass
+
+        try:
+            legacy = self._bare_get("/status", timeout=8)
+            media = legacy.get("media_server") or {}
+            if media:
+                status["media_server"] = {
+                    "connected": bool(media.get("connected")),
+                    "type": media.get("type", ""),
+                    "response_time_ms": media.get("response_time"),
+                }
+            soulseek = legacy.get("soulseek") or {}
+            if soulseek:
+                status.setdefault("services", {})["soulseek"] = bool(soulseek.get("connected"))
+                if soulseek.get("source"):
+                    status["download_source"] = soulseek["source"]
+            if legacy.get("active_media_server"):
+                status["active_media_server"] = legacy["active_media_server"]
+            if legacy.get("metadata_source"):
+                status["metadata_source"] = legacy["metadata_source"]
+        except Exception:
+            pass
+
+        try:
+            activity = self._bare_get("/api/server-activity", timeout=8)
+            if activity:
+                summary = activity.get("summary") or {}
+                server = activity.get("server") or {}
+                status["activity"] = {
+                    "ok": bool(activity.get("ok")),
+                    "server_name": server.get("name", ""),
+                    "server_version": server.get("version", ""),
+                    "streams": summary.get("streams", 0),
+                    "transcodes": summary.get("transcodes", 0),
+                    "total_bandwidth_kbps": summary.get("total_bandwidth_kbps", 0),
+                    "sessions": [
+                        {
+                            "title": s.get("title", ""),
+                            "subtitle": s.get("subtitle", ""),
+                            "user": s.get("user", ""),
+                            "state": s.get("state", ""),
+                            "progress_pct": s.get("progress_pct", 0),
+                        }
+                        for s in (activity.get("sessions") or [])[:5]
+                        if isinstance(s, dict)
+                    ],
+                }
+        except Exception:
+            pass
+        return status
+
+
 # =============================================================================
 # Service Registry
 # =============================================================================
@@ -1445,6 +2255,7 @@ SERVICE_CLASSES = {
     "jellyfin": JellyfinService,
     "emby": EmbyService,
     "subsonic": SubsonicService,
+    "soulsync": SoulSyncService,
 }
 
 
@@ -1646,7 +2457,10 @@ class Plugin:
                 old.get(field) != merged.get(field)
                 for field in ("type", "server_url", "username", "password")
             )
-            if identity_changed:
+            # SoulSync is exempt: its api_key IS the credential the form
+            # submits, not an exchanged token, so dropping it here would
+            # delete the key the user just typed.
+            if identity_changed and merged.get("type") != "soulsync":
                 merged.pop("api_key", None)
                 merged.pop("user_id", None)
             servers[existing] = merged
@@ -1714,22 +2528,34 @@ class Plugin:
             result = await _to_thread(service.test_connection)
 
             # Persist auto-obtained credentials (Jellyfin/Emby auth exchange)
-            if result.get("success") and (result.get("api_key") or result.get("user_id")):
-                changed = False
-                if result.get("api_key") and srv.get("api_key") != result["api_key"]:
-                    srv["api_key"] = result["api_key"]
-                    changed = True
-                if result.get("user_id") and srv.get("user_id") != result["user_id"]:
-                    srv["user_id"] = result["user_id"]
-                    changed = True
-                if changed:
-                    await self._save_settings()
-                    self._resolve_service()
-                    decky.logger.info(f"Saved auth credentials for {srv.get('name')}")
+            if result.get("success"):
+                await self._persist_exchanged_credentials(srv, result)
 
             return result
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
+
+    async def _persist_exchanged_credentials(self, srv: dict, result: dict) -> bool:
+        """Store credentials a Jellyfin/Emby auth exchange produced.
+
+        Those backends exchange username/password for an access token;
+        without persisting it, every fresh service instance exchanges
+        again. Returns True when anything changed.
+        """
+        if not (result.get("api_key") or result.get("user_id")):
+            return False
+        changed = False
+        if result.get("api_key") and srv.get("api_key") != result["api_key"]:
+            srv["api_key"] = result["api_key"]
+            changed = True
+        if result.get("user_id") and srv.get("user_id") != result["user_id"]:
+            srv["user_id"] = result["user_id"]
+            changed = True
+        if changed:
+            await self._save_settings()
+            self._resolve_service()
+            decky.logger.info(f"Saved auth credentials for {srv.get('name')}")
+        return changed
 
     async def test_server_config(self, server_config: dict):
         """Test an unsaved server config without persisting it.
@@ -1750,6 +2576,41 @@ class Plugin:
             return await _to_thread(service.test_connection)
         except Exception as e:
             return {"success": False, "message": f"Connection error: {str(e)}"}
+
+    async def get_server_status(self, server_id: str = None):
+        """Live status for a configured server (default: the active one).
+
+        A fresh service instance is used so polling the status can never
+        disturb the live service's playback-report latches.
+        """
+        if server_id:
+            srv = self._find_server(server_id)
+        else:
+            srv = self._find_server(self.settings.get("active_server_id", ""))
+
+        if not srv:
+            return {"success": False, "connected": False, "message": "No server configured"}
+
+        cls = SERVICE_CLASSES.get(srv.get("type"))
+        if not cls:
+            return {"success": False, "connected": False,
+                    "message": f"Unknown server type: {srv.get('type')}"}
+
+        try:
+            service = cls({**srv, "client_id": self.settings.get("client_id", "")})
+            status = await _to_thread(service.get_server_status)
+            # A poll can run the Jellyfin/Emby auth exchange (a fresh
+            # instance, no stored token yet): persist what it obtained,
+            # like test_connection does, so the next poll reuses it
+            # instead of minting a new server session every 10 seconds.
+            # The credentials never reach the frontend.
+            exchanged = {field: status.pop(field)
+                         for field in ("api_key", "user_id") if status.get(field)}
+            if exchanged and status.get("connected"):
+                await self._persist_exchanged_credentials(srv, exchanged)
+            return status
+        except Exception as e:
+            return {"success": False, "connected": False, "message": f"Status error: {str(e)}"}
 
     async def get_libraries(self, server_config: dict):
         """List selectable music libraries for a (possibly unsaved) config."""
@@ -2075,11 +2936,19 @@ class Plugin:
         except Exception as e:
             decky.logger.error(f"Playback report ({state}) failed: {e}")
 
+    # Stream URLs carry credentials in their query strings (Plex tokens,
+    # Subsonic auth, the SoulSync API key — a full admin credential), and
+    # ffplay error lines quote the input URL. The log tail is surfaced in
+    # the UI error and the plugin log, so secret parameter values are
+    # scrubbed before it leaves this method.
+    _LOG_SECRET_RE = re.compile(r"(?i)\b(api_key|api-key|x-plex-token|token)=[^&\s\"']+")
+
     def _read_ffplay_log(self, max_lines: int = 10) -> str:
         try:
             log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "ffplay.log")
             with open(log_path, "r") as f:
-                return "".join(f.readlines()[-max_lines:]).strip()
+                tail = "".join(f.readlines()[-max_lines:]).strip()
+            return self._LOG_SECRET_RE.sub(r"\1=***", tail)
         except Exception:
             return ""
 
